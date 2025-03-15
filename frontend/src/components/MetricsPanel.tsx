@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MetricsChart } from './MetricsChart';
+import { MetricsService, TestSummary } from '../services/MetricsService';
 
 const chartTypes = [
   {
@@ -26,13 +27,34 @@ const chartTypes = [
 
 interface MetricsPanelProps {
   testId: string;
-  totalRequests: number;
-  activeEndpoints: number;
-  peakConcurrent: number;
 }
 
-export function MetricsPanel({ testId, totalRequests, activeEndpoints, peakConcurrent }: MetricsPanelProps) {
+export function MetricsPanel({ testId }: MetricsPanelProps) {
   const [currentChartIndex, setCurrentChartIndex] = useState(0);
+  const [summary, setSummary] = useState<TestSummary>({
+    totalRequests: 0,
+    activeEndpoints: [],
+    peakConcurrentRequests: 0
+  });
+
+  useEffect(() => {
+    const metricsService = MetricsService.getInstance();
+    
+    // Start monitoring this test
+    metricsService.startMonitoring(testId);
+    
+    // Subscribe to summary updates
+    const handleSummaryUpdate = (newSummary: TestSummary) => {
+      setSummary(newSummary);
+    };
+    
+    metricsService.subscribeToSummary(testId, handleSummaryUpdate);
+    
+    return () => {
+      metricsService.unsubscribeFromSummary(testId, handleSummaryUpdate);
+      metricsService.stopMonitoring();
+    };
+  }, [testId]);
 
   const currentChart = chartTypes[currentChartIndex];
 
@@ -50,6 +72,15 @@ export function MetricsPanel({ testId, totalRequests, activeEndpoints, peakConcu
         <div className="bg-white rounded-lg shadow p-4">
           <h3 className="text-sm font-medium text-gray-500">Peak Concurrent Requests</h3>
           <p className="mt-1 text-2xl font-semibold">{peakConcurrent}</p>
+          <p className="mt-1 text-2xl font-semibold">{summary.totalRequests.toLocaleString()}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="text-sm font-medium text-gray-500">Active Endpoints</h3>
+          <p className="mt-1 text-2xl font-semibold">{summary.activeEndpoints.length}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="text-sm font-medium text-gray-500">Peak Concurrent Requests</h3>
+          <p className="mt-1 text-2xl font-semibold">{summary.peakConcurrentRequests}</p>
         </div>
       </div>
 

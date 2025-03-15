@@ -10,6 +10,7 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { cn } from '../lib/utils';
+import { MetricsService, EndpointMetric } from '../services/MetricsService';
 
 interface MetricsChartProps {
   className?: string;
@@ -102,6 +103,22 @@ export function MetricsChart({ className, testId, chartType, title }: MetricsCha
     return () => {
       clearInterval(interval);
       ws.close();
+export function MetricsChart({ className, testId, chartType, title }: MetricsChartProps) {
+  const [metrics, setMetrics] = useState<EndpointMetric[]>([]);
+  const [endpoints, setEndpoints] = useState<string[]>([]);
+
+  useEffect(() => {
+    const metricsService = MetricsService.getInstance();
+    
+    const handleMetricsUpdate = (newMetrics: EndpointMetric[]) => {
+      setMetrics(newMetrics);
+      setEndpoints(Array.from(new Set(newMetrics.map(m => m.endpoint))));
+    };
+    
+    metricsService.subscribeToMetrics(testId, handleMetricsUpdate);
+    
+    return () => {
+      metricsService.unsubscribeFromMetrics(testId, handleMetricsUpdate);
     };
   }, [testId]);
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
@@ -33,6 +33,7 @@ from api_models import (
     EndpointResult,
     DistributionStrategy
 )
+from metrics_generator import metrics_manager
 
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
@@ -382,6 +383,37 @@ async def stop_advanced_test(test_id: str):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+@app.websocket("/ws/metrics/{test_id}")
+async def metrics_websocket(websocket: WebSocket, test_id: str):
+    await metrics_manager.connect_client(test_id, websocket)
+    
+    try:
+        while True:
+            await metrics_manager.broadcast_metrics(test_id)
+            await asyncio.sleep(1)  # Update every second
+    except WebSocketDisconnect:
+        await metrics_manager.disconnect_client(test_id, websocket)
+    except Exception as e:
+        print(f"Error in metrics websocket: {e}")
+        await metrics_manager.disconnect_client(test_id, websocket)
+
+@app.get("/api/tests/{test_id}/summary")
+async def get_test_summary(test_id: str):
+    """Get summary statistics for a test."""
+    metrics = metrics_manager.generator.generate_metrics(test_id)
+    if not metrics:
+        return {
+            "totalRequests": 0,
+            "activeEndpoints": [],
+            "peakConcurrentRequests": 0
+        }
+    
+    return {
+        "totalRequests": sum(m.concurrent_requests for m in metrics),
+        "activeEndpoints": [m.endpoint for m in metrics],
+        "peakConcurrentRequests": max(m.concurrent_requests for m in metrics)
+    }
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
