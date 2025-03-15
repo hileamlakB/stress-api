@@ -8,3 +8,4 @@ sqlalchemy>=2.0.23
 psycopg2-binary>=2.9.9
 python-dotenv>=1.0.0
 httpx>=0.25.1
+faker>=20.0.0

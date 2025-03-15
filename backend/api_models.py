@@ -56,3 +56,103 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service health status")
     timestamp: datetime = Field(..., description="Current timestamp")
     version: str = Field(..., description="API version")
+
+class ParameterSchema(BaseModel):
+    name: str = Field(..., description="Parameter name")
+    location: str = Field(..., description="Parameter location (path, query, header, cookie)")
+    required: bool = Field(..., description="Whether the parameter is required")
+    schema: Dict[str, Any] = Field(..., description="Parameter schema")
+    description: Optional[str] = Field(None, description="Parameter description")
+
+class ResponseSchema(BaseModel):
+    status_code: str = Field(..., description="HTTP status code")
+    content_type: str = Field(..., description="Response content type")
+    schema: Dict[str, Any] = Field(..., description="Response schema")
+    description: Optional[str] = Field(None, description="Response description")
+
+class EndpointSchema(BaseModel):
+    path: str = Field(..., description="Endpoint path")
+    method: str = Field(..., description="HTTP method")
+    summary: str = Field(..., description="Endpoint summary")
+    parameters: List[ParameterSchema] = Field(default_factory=list, description="Endpoint parameters")
+    request_body: Optional[Dict[str, Any]] = Field(None, description="Request body schema")
+    responses: Dict[str, ResponseSchema] = Field(default_factory=dict, description="Response schemas")
+    description: Optional[str] = Field(None, description="Endpoint description")
+    
+    def get_parameter_description(self) -> str:
+        if not self.parameters:
+            return "No parameters"
+        
+        params = []
+        for p in self.parameters:
+            type_info = p.schema.get('type', 'any')
+            if p.schema.get('enum'):
+                type_info += f" (enum: {p.schema['enum']})"
+            params.append(f"{p.name} ({p.location}): {type_info}{'*' if p.required else ''}")
+        return "\n".join(params)
+    
+    def get_response_description(self) -> str:
+        if not self.responses:
+            return "No response schema"
+        
+        responses = []
+        for status, response in self.responses.items():
+            responses.append(f"{status}: {response.description or 'No description'}")
+        return "\n".join(responses)
+
+class OpenAPIEndpointsRequest(BaseModel):
+    target_url: HttpUrl = Field(..., description="URL of the target API to analyze")
+
+class OpenAPIEndpointsResponse(BaseModel):
+    target_url: HttpUrl = Field(..., description="Target API URL")
+    endpoints: List[EndpointSchema] = Field(default_factory=list, description="List of endpoints")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of the analysis")
+
+class DistributionStrategy(str, Enum):
+    SEQUENTIAL = "sequential"
+    INTERLEAVED = "interleaved"
+    RANDOM = "random"
+
+class StressTestEndpointConfig(BaseModel):
+    path: str = Field(..., description="Endpoint path")
+    method: str = Field(..., description="HTTP method")
+    weight: Optional[float] = Field(1.0, description="Weight for distribution strategies")
+    custom_parameters: Optional[Dict[str, Any]] = Field(None, description="Custom parameters for this endpoint")
+
+class StressTestConfig(BaseModel):
+    target_url: HttpUrl = Field(..., description="URL of the target API to test")
+    strategy: DistributionStrategy = Field(DistributionStrategy.SEQUENTIAL, description="Distribution strategy")
+    max_concurrent_users: int = Field(..., ge=1, le=1000, description="Maximum number of concurrent users")
+    request_rate: int = Field(..., ge=1, description="Number of requests per second")
+    duration: int = Field(..., ge=1, description="Test duration in seconds")
+    endpoints: List[StressTestEndpointConfig] = Field(..., min_items=1, description="List of endpoints to test")
+    headers: Optional[Dict[str, str]] = Field(None, description="Optional request headers")
+    use_random_session: bool = Field(False, description="Whether to use random sessions for testing")
+
+class StressTestProgressResponse(BaseModel):
+    test_id: str = Field(..., description="Unique identifier for the test")
+    status: TestStatus = Field(..., description="Current test status")
+    elapsed_time: float = Field(..., description="Elapsed time in seconds")
+    completed_requests: int = Field(..., description="Number of completed requests")
+    results_available: bool = Field(..., description="Whether partial results are available")
+
+class EndpointResult(BaseModel):
+    endpoint: str = Field(..., description="Endpoint path and method")
+    concurrent_requests: int = Field(..., description="Number of concurrent requests")
+    success_count: int = Field(..., description="Number of successful requests")
+    failure_count: int = Field(..., description="Number of failed requests")
+    avg_response_time: float = Field(..., description="Average response time in seconds")
+    min_response_time: float = Field(..., description="Minimum response time in seconds")
+    max_response_time: float = Field(..., description="Maximum response time in seconds")
+    status_codes: Dict[str, int] = Field(default_factory=dict, description="Count of each status code")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of the test")
+    error_message: Optional[str] = Field(None, description="Error message if any")
+
+class StressTestResultsResponse(BaseModel):
+    test_id: str = Field(..., description="Test identifier")
+    status: TestStatus = Field(..., description="Current test status")
+    config: StressTestConfig = Field(..., description="Test configuration")
+    start_time: datetime = Field(..., description="Test start timestamp")
+    end_time: Optional[datetime] = Field(None, description="Test end timestamp")
+    results: List[EndpointResult] = Field(default_factory=list, description="List of endpoint results")
+    summary: Dict[str, Any] = Field(..., description="Test summary statistics")
