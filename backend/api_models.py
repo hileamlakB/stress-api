@@ -61,13 +61,13 @@ class ParameterSchema(BaseModel):
     name: str = Field(..., description="Parameter name")
     location: str = Field(..., description="Parameter location (path, query, header, cookie)")
     required: bool = Field(..., description="Whether the parameter is required")
-    schema: Dict[str, Any] = Field(..., description="Parameter schema")
+    param_schema: Dict[str, Any] = Field(..., description="Parameter schema")
     description: Optional[str] = Field(None, description="Parameter description")
 
 class ResponseSchema(BaseModel):
     status_code: str = Field(..., description="HTTP status code")
     content_type: str = Field(..., description="Response content type")
-    schema: Dict[str, Any] = Field(..., description="Response schema")
+    response_schema: Dict[str, Any] = Field(..., description="Response schema")
     description: Optional[str] = Field(None, description="Response description")
 
 class EndpointSchema(BaseModel):
@@ -85,9 +85,9 @@ class EndpointSchema(BaseModel):
         
         params = []
         for p in self.parameters:
-            type_info = p.schema.get('type', 'any')
-            if p.schema.get('enum'):
-                type_info += f" (enum: {p.schema['enum']})"
+            type_info = p.param_schema.get('type', 'any')
+            if p.param_schema.get('enum'):
+                type_info += f" (enum: {p.param_schema['enum']})"
             params.append(f"{p.name} ({p.location}): {type_info}{'*' if p.required else ''}")
         return "\n".join(params)
     

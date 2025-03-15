@@ -152,7 +152,7 @@ class TestStressTester(unittest.TestCase):
         self.assertEqual(result.concurrent_requests, concurrent_requests)
         self.assertEqual(result.success_count, 2)
         self.assertEqual(result.failure_count, 0)
-        self.assertEqual(result.avg_response_time, 0.15)
+        self.assertAlmostEqual(result.avg_response_time, 0.15, places=10)
         self.assertEqual(result.min_response_time, 0.1)
         self.assertEqual(result.max_response_time, 0.2)
         self.assertEqual(result.status_codes, {"200": 2})

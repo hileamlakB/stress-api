@@ -68,7 +68,9 @@ async def validate_target(request: TargetValidationRequest):
     try:
         # Implement actual validation logic
         try:
-            openapi_url = f"{request.target_url.rstrip('/')}/openapi.json"
+            # Convert HttpUrl to string before using rstrip
+            target_url_str = str(request.target_url)
+            openapi_url = f"{target_url_str.rstrip('/')}/openapi.json"
             async with httpx.AsyncClient() as client:
                 response = await client.get(openapi_url, timeout=10.0)
                 openapi_available = response.status_code == 200
@@ -94,9 +96,8 @@ async def validate_target(request: TargetValidationRequest):
 @app.post("/api/openapi-endpoints", response_model=OpenAPIEndpointsResponse)
 async def get_openapi_endpoints(request: OpenAPIEndpointsRequest):
     try:
-        # Fetch and parse OpenAPI schema
-        schema = await OpenAPIParser.fetch_openapi_spec(str(request.target_url))
-        endpoints = OpenAPIParser.parse_schema(schema)
+        # Fetch and parse OpenAPI endpoints 
+        endpoints = await OpenAPIParser.get_endpoints(str(request.target_url))
         
         return OpenAPIEndpointsResponse(
             target_url=request.target_url,
@@ -119,6 +120,7 @@ async def get_openapi_endpoints(request: OpenAPIEndpointsRequest):
             detail=str(e)
         )
     except Exception as e:
+        logger.error(f"Error processing request: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error processing request: {str(e)}"
@@ -139,11 +141,11 @@ async def generate_sample_data(endpoint: EndpointSchema):
         # Generate sample data for parameters
         param_data = {}
         for param in endpoint.parameters:
-            if param.schema:
+            if param.param_schema:
                 param_data[param.name] = data_generator.generate_primitive(
-                    param.schema.get('type', 'string'),
-                    param.schema.get('format'),
-                    param.schema.get('enum')
+                    param.param_schema.get('type', 'string'),
+                    param.param_schema.get('format'),
+                    param.param_schema.get('enum')
                 )
         
         return {
@@ -152,9 +154,10 @@ async def generate_sample_data(endpoint: EndpointSchema):
             "parameters": param_data
         }
     except Exception as e:
+        logger.error(f"Error generating sample data: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error generating sample data: {str(e)}"
         )
 
 # Endpoint to start stress test
