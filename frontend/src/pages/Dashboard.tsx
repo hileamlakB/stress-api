@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Settings, LogOut, ChevronRight } from 'lucide-react';
+import { Zap, Settings, LogOut, ChevronRight, Play } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
+import { MetricsPanel } from '../components/MetricsPanel';
+import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
 
 export function Dashboard() {
   const [apiUrl, setApiUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -33,12 +36,31 @@ export function Dashboard() {
     }
   };
 
-  const handleFetchEndpoints = async () => {
+  const startLoadTest = async () => {
+    if (!apiUrl) {
+      alert('Please enter an API URL');
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: Implement endpoint fetching
+      const response = await fetch('http://localhost:8000/api/tests/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: apiUrl }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start load test');
+      }
+
+      const data = await response.json();
+      setActiveTestId(data.testId);
     } catch (error) {
-      console.error('Error fetching endpoints:', error);
+      console.error('Error starting load test:', error);
+      alert('Failed to start load test');
     } finally {
       setLoading(false);
     }
@@ -49,17 +71,27 @@ export function Dashboard() {
       <nav className="bg-white border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-2">
-              <Zap className="h-6 w-6 text-blue-500" />
-              <span className="text-lg font-semibold text-gray-900">FastAPI Stress Tester</span>
+            <div className="flex items-center">
+              <Zap className="h-8 w-8 text-indigo-600" />
+              <span className="ml-2 text-xl font-semibold">Stress Tester</span>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="secondary" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {}}
+                className="flex items-center"
+              >
+                <Settings className="h-5 w-5 mr-1" />
                 Settings
               </Button>
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSignOut}
+                className="flex items-center"
+              >
+                <LogOut className="h-5 w-5 mr-1" />
                 Sign Out
               </Button>
             </div>
@@ -68,50 +100,44 @@ export function Dashboard() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="apple-card p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">API Configuration</h2>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="apiUrl" className="block text-sm font-medium text-gray-700 mb-1">
-                FastAPI Base URL
-              </label>
-              <div className="flex space-x-4">
-                <input
-                  id="apiUrl"
-                  type="url"
-                  value={apiUrl}
-                  onChange={(e) => setApiUrl(e.target.value)}
-                  placeholder="https://api.example.com"
-                  className="apple-input flex-1"
-                />
-                <Button
-                  onClick={handleFetchEndpoints}
-                  disabled={!apiUrl || loading}
-                >
-                  {loading ? 'Fetching...' : 'Fetch Endpoints'}
-                </Button>
-              </div>
-            </div>
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-lg font-semibold mb-4">Start New Load Test</h2>
+          <div className="flex space-x-4">
+            <input
+              type="text"
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="Enter API URL to test"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <Button
+              onClick={startLoadTest}
+              disabled={loading}
+              className="flex items-center"
+            >
+              <Play className="h-5 w-5 mr-1" />
+              {loading ? 'Starting...' : 'Start Test'}
+            </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="apple-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Available Endpoints</h3>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+        {activeTestId ? (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold">Live Metrics</h2>
+              <p className="text-sm text-gray-500">Test ID: {activeTestId}</p>
             </div>
-            <p className="text-gray-600">No endpoints fetched yet. Enter an API URL above to begin.</p>
+            <MetricsPanel testId={activeTestId} />
           </div>
-          
-          <div className="apple-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Test Configuration</h3>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
+        ) : (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold">Example Visualization</h2>
+              <p className="text-sm text-gray-500">This is how your metrics will look during a load test</p>
             </div>
-            <p className="text-gray-600">Select an endpoint to configure stress test parameters.</p>
+            <DemoMetricsPanel />
           </div>
-        </div>
+        )}
       </main>
     </div>
   );
