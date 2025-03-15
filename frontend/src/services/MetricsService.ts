@@ -49,7 +49,7 @@ export class MetricsService {
     if (!this.testId) return;
 
     try {
-      this.ws = new WebSocket(`ws://localhost:8000/ws/metrics/${this.testId}`);
+      this.ws = new WebSocket(`ws://${window.location.host}/ws/metrics/${this.testId}`);
 
       this.ws.onmessage = (event) => {
         const metrics = JSON.parse(event.data);
@@ -94,7 +94,7 @@ export class MetricsService {
     // Poll summary every second
     this.summaryPollingInterval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/tests/${this.testId}/summary`);
+        const response = await fetch(`/api/tests/${this.testId}/summary`);
         const summary = await response.json();
         this.notifySummaryListeners(this.testId!, summary);
       } catch (error) {

@@ -5,6 +5,8 @@ import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
+import apiService from '../services/ApiService';
+import { EndpointSchema, DistributionStrategy } from '../types/api';
 
 // Define types for our state
 type Endpoint = {
@@ -12,8 +14,6 @@ type Endpoint = {
   path: string;
   description?: string;
 };
-
-type DistributionMode = 'sequential' | 'interleaved' | 'random';
 
 export function Dashboard() {
   // Base configuration state
@@ -34,7 +34,7 @@ export function Dashboard() {
   
   // Test configuration state
   const [concurrentRequests, setConcurrentRequests] = useState(10);
-  const [distributionMode, setDistributionMode] = useState<DistributionMode>('sequential');
+  const [distributionMode, setDistributionMode] = useState<DistributionStrategy>('sequential');
   
   const navigate = useNavigate();
 
@@ -70,34 +70,21 @@ export function Dashboard() {
 
     setIsLoadingEndpoints(true);
     try {
-      // This would be replaced with an actual API call in production
-      // For now, we'll simulate endpoint fetching
-      setTimeout(() => {
-        const mockEndpoints: Endpoint[] = [
-          { method: 'POST', path: '/auth/token_login' },
-          { method: 'POST', path: '/auth/signup_email' },
-          { method: 'GET', path: '/auth/login' },
-          { method: 'GET', path: '/auth/validatesession' },
-          { method: 'GET', path: '/auth/get_current_user_details' },
-          { method: 'GET', path: '/auth/logout' },
-          { method: 'GET', path: '/auth/status_txt' },
-          { method: 'POST', path: '/auth/update_user_details' },
-          { method: 'POST', path: '/auth/create_mfa_for_user' },
-          { method: 'POST', path: '/auth/get_user_details' },
-          { method: 'POST', path: '/auth/delete_user_details_id' },
-          { method: 'GET', path: '/settings/all_user_ids' },
-          { method: 'POST', path: '/auth/create_company' },
-          { method: 'POST', path: '/auth/delete_settings_param' },
-          { method: 'POST', path: '/review_posts_from_user' },
-          { method: 'POST', path: '/auth/delete_posts' },
-          { method: 'POST', path: '/chatmessages' }
-        ];
-        setEndpoints(mockEndpoints);
-        setIsLoadingEndpoints(false);
-      }, 1000);
+      // Call the backend API to fetch endpoints
+      const endpointData = await apiService.fetchEndpoints(baseUrl);
+      
+      // Map the endpoint data to our simplified format
+      const mappedEndpoints: Endpoint[] = endpointData.map(endpoint => ({
+        method: endpoint.method,
+        path: endpoint.path,
+        description: endpoint.description || endpoint.summary
+      }));
+      
+      setEndpoints(mappedEndpoints);
+      setIsLoadingEndpoints(false);
     } catch (error) {
       console.error('Error fetching endpoints:', error);
-      alert('Failed to fetch endpoints');
+      alert('Failed to fetch endpoints: ' + (error instanceof Error ? error.message : String(error)));
       setIsLoadingEndpoints(false);
     }
   };
@@ -159,8 +146,40 @@ export function Dashboard() {
 
     setLoading(true);
     try {
-      // In a real implementation, this would call your backend API
-      // For now, we'll simulate a response
+      // Prepare headers from authJson
+      let headers = {};
+      if (authJson) {
+        headers = JSON.parse(authJson);
+      }
+
+      // Prepare endpoints config
+      const endpointConfigs = selectedEndpoints.map(endpoint => {
+        const [method, path] = endpoint.split(' ');
+        return {
+          method,
+          path,
+          weight: 1.0
+        };
+      });
+
+      // Create test config
+      const testConfig = {
+        target_url: baseUrl,
+        strategy: distributionMode,
+        max_concurrent_users: concurrentRequests,
+        request_rate: 10,  // Default value
+        duration: 60,      // Default value
+        endpoints: endpointConfigs,
+        headers,
+        use_random_session: false
+      };
+
+      // For now, just simulate a response
+      // In a real implementation, uncomment this to call the actual API
+      // const response = await apiService.startStressTest(testConfig);
+      // setActiveTestId(response.test_id);
+      
+      // Simulation for now
       setTimeout(() => {
         setActiveTestId(`test-${Math.random().toString(36).substr(2, 9)}`);
         setLoading(false);
