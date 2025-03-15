@@ -267,39 +267,19 @@ export function Dashboard() {
                   </p>
                 </div>
                 
-                <div className="flex space-x-3">
-                  <div className="flex items-center">
-                    <input
-                      id="phoneAuth"
-                      type="radio"
-                      name="authType"
-                      defaultChecked
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <label htmlFor="phoneAuth" className="ml-2 text-sm text-gray-700">
-                      Phone Auth
-                    </label>
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      id="sessionManager"
-                      type="radio"
-                      name="authType"
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <label htmlFor="sessionManager" className="ml-2 text-sm text-gray-700">
-                      Session Manager
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="bg-green-100 border border-green-200 rounded-md p-3">
-                  <div className="text-sm text-green-800 font-medium">
-                    Status: Authenticated (11 active sessions)
-                  </div>
-                  <div className="mt-1 text-xs text-green-700 flex items-center">
-                    <span role="img" aria-label="key" className="mr-1">🔑</span>
-                    Active session: +12223334447 (User ID: user-5f005403)
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Session Manager</h4>
+                  <div className="bg-green-100 border border-green-200 rounded-md p-3">
+                    <div className="text-sm text-green-800 font-medium">
+                      Status: Authenticated (11 active sessions)
+                    </div>
+                    <div className="mt-1 text-xs text-green-700 flex items-center">
+                      <span role="img" aria-label="key" className="mr-1">🔑</span>
+                      Active session: user-5f005403
+                    </div>
+                    <p className="mt-2 text-xs text-gray-600">
+                      The Session Manager tracks active API sessions and maintains authentication state for your stress tests.
+                    </p>
                   </div>
                 </div>
               </div>
