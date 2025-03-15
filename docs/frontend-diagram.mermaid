@@ -1,0 +1,124 @@
+classDiagram
+    %% User Interface Components
+    class ReactFrontend {
+        +Components
+        +State Management
+        +API Client
+        +render()
+    }
+    
+    class UIComponents {
+        +Dashboard
+        +Authentication
+        +TestConfiguration
+        +ResultsVisualization
+        +UserManagement
+        +render()
+    }
+    
+    class StateManagement {
+        +UserStore
+        +TestConfigStore
+        +ResultsStore
+        +dispatch()
+        +getState()
+    }
+    
+    %% Backend API Components
+    class FastAPIBackend {
+        +Routes
+        +Dependencies
+        +Models
+        +start_app()
+    }
+    
+    class APIControllers {
+        +UserController
+        +StressTestController
+        +ResultsController
+        +ConfigurationController
+    }
+    
+    class Authentication {
+        +JWTAuthentication
+        +OAuth2
+        +SessionManagement
+        +verify_token()
+        +create_token()
+        +validate_user()
+    }
+    
+    %% Core Testing Components
+    class StressTester {
+        +TestOrchestrator
+        +EndpointManager
+        +RequestGenerator
+        +execute_test()
+        +monitor_progress()
+        +collect_results()
+    }
+    
+    class TestStrategies {
+        +SequentialTesting
+        +InterleavedTesting
+        +RandomDistribution
+        +execute()
+        +distribute_load()
+    }
+    
+    class Metrics {
+        +ResponseTimeCollector
+        +ErrorRateCalculator
+        +ThroughputMonitor
+        +calculate_statistics()
+        +generate_reports()
+    }
+    
+    %% Data Storage
+    class Database {
+        +UserRepository
+        +TestConfigRepository
+        +ResultsRepository
+        +query()
+        +insert()
+        +update()
+    }
+    
+    %% External Systems
+    class TargetAPI {
+        +Endpoints
+        +Authentication
+        +Responses
+    }
+
+    %% Third-Party Services
+    class NotificationService {
+        +EmailNotifications
+        +WebhookNotifications
+        +send_notification()
+    }
+    
+    class ExportService {
+        +CSVExport
+        +PDFReportGeneration
+        +export_data()
+        +generate_report()
+    }
+    
+    %% Relationships
+    ReactFrontend "1" *-- "1" UIComponents : contains
+    ReactFrontend "1" *-- "1" StateManagement : uses
+    ReactFrontend "1" --> "1" FastAPIBackend : communicates with
+    
+    FastAPIBackend "1" *-- "1..*" APIControllers : contains
+    FastAPIBackend "1" *-- "1" Authentication : uses
+    FastAPIBackend "1" *-- "1" StressTester : manages
+    
+    StressTester "1" *-- "1..*" TestStrategies : implements
+    StressTester "1" *-- "1" Metrics : collects
+    StressTester "1" --> "1..*" TargetAPI : tests
+    
+    APIControllers "1" --> "1" Database : persists data
+    
+    StressTester "1" --> "1" NotificationService : sends alerts
+    Metrics "1" --> "1" ExportService : generates reports
