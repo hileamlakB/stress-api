@@ -65,49 +65,12 @@ function generateSimulatedData(endpoints: string[]): EndpointMetric[] {
 
 export function MetricsChart({ className, testId, chartType, title }: MetricsChartProps) {
   const [metrics, setMetrics] = useState<EndpointMetric[]>([]);
-  const [endpoints, setEndpoints] = useState<string[]>(['/api/test1', '/api/test2', '/api/test3']);
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    // Start with simulated data
-    setMetrics(generateSimulatedData(endpoints));
-    
-    const ws = new WebSocket(`ws://localhost:8000/ws/metrics/${testId}`);
-
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      setIsConnected(true);
-    };
-
-    ws.onmessage = (event) => {
-      const newMetrics = JSON.parse(event.data);
-      setMetrics(newMetrics);
-      
-      // Update unique endpoints
-      const uniqueEndpoints = Array.from(new Set(newMetrics.map((m: EndpointMetric) => m.endpoint)));
-      setEndpoints(uniqueEndpoints);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
-      setIsConnected(false);
-    };
-
-    // If not connected, update simulated data periodically
-    const interval = setInterval(() => {
-      if (!isConnected) {
-        setMetrics(generateSimulatedData(endpoints));
-      }
-    }, 1000);
-
-    return () => {
-      clearInterval(interval);
-      ws.close();
-export function MetricsChart({ className, testId, chartType, title }: MetricsChartProps) {
-  const [metrics, setMetrics] = useState<EndpointMetric[]>([]);
   const [endpoints, setEndpoints] = useState<string[]>([]);
 
   useEffect(() => {
+    // Start with simulated data
+    setMetrics(generateSimulatedData(['/api/test1', '/api/test2', '/api/test3']));
+    
     const metricsService = MetricsService.getInstance();
     
     const handleMetricsUpdate = (newMetrics: EndpointMetric[]) => {
