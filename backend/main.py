@@ -68,7 +68,9 @@ async def validate_target(request: TargetValidationRequest):
     try:
         # Implement actual validation logic
         try:
-            openapi_url = f"{request.target_url.rstrip('/')}/openapi.json"
+            # Convert HttpUrl to string before using rstrip
+            target_url_str = str(request.target_url)
+            openapi_url = f"{target_url_str.rstrip('/')}/openapi.json"
             async with httpx.AsyncClient() as client:
                 response = await client.get(openapi_url, timeout=10.0)
                 openapi_available = response.status_code == 200

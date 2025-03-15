@@ -23,14 +23,17 @@ class StressTester:
         from data_generator import RequestDataGenerator
         self.request_generator = RequestDataGenerator()
 
-    async def execute_request(self, client: httpx.AsyncClient, url: str, method: str = "GET",
+    async def execute_request(self, client: httpx.AsyncClient, base_url: str, endpoint_path: str, method: str = "GET",
                             headers: Optional[Dict[str, str]] = None,
                             path_params: Optional[Dict[str, Any]] = None,
                             query_params: Optional[Dict[str, Any]] = None,
                             json_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Execute a single HTTP request and return metrics"""
+        # Convert base_url to string if it's not already
+        base_url_str = str(base_url)
+        
         # Apply path parameters if provided
-        request_url = url
+        request_url = f"{base_url_str.rstrip('/')}/{endpoint_path.lstrip('/')}"
         if path_params:
             for param, value in path_params.items():
                 request_url = request_url.replace(f"{{{param}}}", str(value))
@@ -81,7 +84,10 @@ class StressTester:
                                 endpoint_schema: Optional[Dict[str, Any]] = None,
                                 custom_params: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         """Prepare parameters for an endpoint request"""
-        url = f"{base_url.rstrip('/')}/{endpoint_path.lstrip('/')}"
+        # Convert base_url to string if it's not already
+        base_url_str = str(base_url)
+        
+        url = f"{base_url_str.rstrip('/')}/{endpoint_path.lstrip('/')}"
         headers = {}
         path_params = {}
         query_params = {}
@@ -529,9 +535,11 @@ class StressTester:
                 tasks = []
                 for endpoint in endpoints:
                     for _ in range(concurrent_users):
+                        # Convert target_url to string if it's not already
+                        target_url_str = str(target_url)
                         task = self.execute_request(
                             client=client,
-                            url=f"{target_url.rstrip('/')}/{endpoint.lstrip('/')}",
+                            url=f"{target_url_str.rstrip('/')}/{endpoint.lstrip('/')}",
                             headers=headers,
                             json_data=payload_data
                         )

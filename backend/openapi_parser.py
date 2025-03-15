@@ -20,8 +20,8 @@ class OpenAPIParser:
     async def fetch_openapi_spec(base_url: str) -> Dict[str, Any]:
         """Fetch OpenAPI specification from a URL"""
         try:
-            # Normalize the URL by removing trailing slashes
-            base_url = base_url.rstrip('/')
+            # Ensure base_url is a string and normalize by removing trailing slashes
+            base_url = str(base_url).rstrip('/')
             
             # If the URL ends with /docs, we need to handle it differently
             is_docs_url = base_url.endswith('/docs')
