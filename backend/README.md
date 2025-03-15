@@ -1,74 +1,158 @@
-# FastAPI Stress Tester Backend
+# FastAPI Stress Testing Backend
 
-This is the backend service for the FastAPI Stress Testing tool. It provides endpoints for executing stress tests, monitoring results, and managing test configurations.
+This is the backend service for the FastAPI Stress Testing tool, which allows you to perform load and stress tests on APIs built with FastAPI (or any other API).
 
 ## Features
 
-- Health check endpoint
 - Target API validation
-- Stress test execution with configurable parameters
-- Real-time test monitoring
-- Test results retrieval
-- Test execution control (start/stop)
+- Automatic OpenAPI schema parsing
+- Endpoint discovery and analysis
+- Realistic test data generation based on schemas
+- Multiple stress testing strategies (Sequential, Interleaved, Random)
+- Comprehensive metrics collection and reporting
 
 ## Setup
 
-1. Install dependencies:
+### Prerequisites
+
+- Python 3.8+ installed
+- pip (Python package installer)
+
+### Environment Setup
+
+1. Clone the repository and navigate to the backend directory:
+
+```bash
+git clone https://github.com/yourusername/stress-api.git
+cd stress-api/backend
+```
+
+2. Create a virtual environment:
+
+```bash
+# Create a virtual environment named 'venv'
+python -m venv venv
+```
+
+3. Activate the virtual environment:
+
+On macOS/Linux:
+```bash
+source venv/bin/activate
+```
+
+On Windows:
+```bash
+venv\Scripts\activate
+```
+
+4. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the server:
+## Running the Application
+
+Once you've set up the environment and installed the dependencies, you can run the backend service:
+
 ```bash
-python main.py
+# Make sure your virtual environment is activated
+python -m uvicorn main:app --reload
 ```
 
-The server will start on `http://localhost:8000`
+The server will start at http://localhost:8000.
+
+## API Documentation
+
+Once the server is running, you can access the automatic API documentation at:
+
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
 ## API Endpoints
 
-### Health Check
-- `GET /health`
-  - Check if the service is running
+### Basic Endpoints
 
-### Test Management
-- `POST /api/validate-target`
-  - Validate target API accessibility
-  - Body: `{ "target_url": "string" }`
+- `GET /health`: Health check endpoint
+- `POST /api/validate-target`: Validates a target API and checks if OpenAPI schema is available
+- `POST /api/openapi-endpoints`: Fetches and parses the OpenAPI schema of a target API
+- `POST /api/generate-sample-data`: Generates sample data for a specific endpoint
 
-- `POST /api/start-test`
-  - Start a new stress test
-  - Body: Test configuration including target URL, concurrent users, request rate, etc.
+### Stress Testing Endpoints
 
-- `GET /api/test-results/{test_id}`
-  - Get results for a specific test
+- `POST /api/start-test`: Start a simple stress test
+- `GET /api/test-results/{test_id}`: Get results from a simple test
+- `POST /api/stop-test/{test_id}`: Stop a running test
 
-- `POST /api/stop-test/{test_id}`
-  - Stop an ongoing test
+### Advanced Stress Testing Endpoints
 
-## Test Configuration
+- `POST /api/advanced-test`: Start an advanced stress test with different distribution strategies
+- `GET /api/advanced-test/{test_id}/progress`: Get progress of a running advanced test
+- `GET /api/advanced-test/{test_id}/results`: Get detailed results from an advanced test
+- `POST /api/advanced-test/{test_id}/stop`: Stop a running advanced test
 
-Example test configuration:
-```json
-{
-  "target_url": "http://api.example.com",
-  "concurrent_users": 10,
-  "request_rate": 100,
-  "duration": 60,
-  "endpoints": ["/users", "/products"],
-  "headers": {
-    "Authorization": "Bearer token"
-  },
-  "payload_data": {
-    "key": "value"
-  }
-}
+## Example Usage
+
+### Start an Advanced Stress Test
+
+```bash
+curl -X POST "http://localhost:8000/api/advanced-test" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_url": "https://example-api.com",
+    "strategy": "interleaved",
+    "max_concurrent_users": 100,
+    "request_rate": 10,
+    "duration": 60,
+    "endpoints": [
+      {
+        "path": "/users",
+        "method": "GET",
+        "weight": 2.0
+      },
+      {
+        "path": "/products",
+        "method": "GET", 
+        "weight": 1.0
+      }
+    ],
+    "headers": {
+      "Authorization": "Bearer your-token"
+    }
+  }'
+```
+
+### Fetch OpenAPI Endpoints
+
+```bash
+curl -X POST "http://localhost:8000/api/openapi-endpoints" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_url": "https://example-api.com"
+  }'
+```
+
+## Troubleshooting
+
+If you get a "command not found: uvicorn" error, make sure you have:
+1. Activated your virtual environment
+2. Installed the requirements successfully
+
+You can also try running with:
+```bash
+python -m uvicorn main:app --reload
 ```
 
 ## Development
 
-The backend is built with:
-- FastAPI for the web framework
-- HTTPX for async HTTP requests
-- Pydantic for data validation
-- Uvicorn as the ASGI server
+To add new features or fix bugs:
+
+1. Make your changes
+2. Run tests (if available)
+3. Update documentation if necessary
+4. Submit a pull request
+
+## License
+
+MIT License
