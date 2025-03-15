@@ -68,10 +68,24 @@ export function Dashboard() {
       return;
     }
 
+    // Clean up the URL
+    let cleanUrl = baseUrl.trim();
+    // Ensure the URL has a protocol
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
+    // Set the cleaned URL
+    setBaseUrl(cleanUrl);
+
     setIsLoadingEndpoints(true);
+    setEndpoints([]); // Clear any previous endpoints
+    
     try {
+      // Show user feedback about the process
+      console.log(`Fetching endpoints from: ${cleanUrl}`);
+
       // Call the backend API to fetch endpoints
-      const endpointData = await apiService.fetchEndpoints(baseUrl);
+      const endpointData = await apiService.fetchEndpoints(cleanUrl);
       
       // Map the endpoint data to our simplified format
       const mappedEndpoints: Endpoint[] = endpointData.map(endpoint => ({
@@ -80,11 +94,35 @@ export function Dashboard() {
         description: endpoint.description || endpoint.summary
       }));
       
-      setEndpoints(mappedEndpoints);
+      if (mappedEndpoints.length === 0) {
+        alert('No endpoints were found for this API. Please verify the URL is correct and the API uses FastAPI with OpenAPI/Swagger documentation.');
+      } else {
+        console.log(`Successfully fetched ${mappedEndpoints.length} endpoints`);
+        setEndpoints(mappedEndpoints);
+      }
+      
       setIsLoadingEndpoints(false);
     } catch (error) {
       console.error('Error fetching endpoints:', error);
-      alert('Failed to fetch endpoints: ' + (error instanceof Error ? error.message : String(error)));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Provide user-friendly error message
+      let userMessage = 'Failed to fetch endpoints: ' + errorMessage;
+      
+      // Create more specific error messages for common issues
+      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
+        userMessage = `Could not connect to the API at ${cleanUrl}. Please check that the URL is correct and the server is running.`;
+      } else if (errorMessage.includes('not accessible: HTTP 404')) {
+        userMessage = `The API server at ${cleanUrl} was found but returned a 404 Not Found error. Please verify the base URL is correct.`;
+      } else if (errorMessage.includes('not appear to support OpenAPI/Swagger')) {
+        userMessage = `This API does not appear to support OpenAPI/Swagger. Only FastAPI or Swagger-enabled APIs are supported.`;
+      } else if (errorMessage.includes('non-standard OpenAPI schema location')) {
+        userMessage = errorMessage;
+      } else if (errorMessage.includes('Network Error')) {
+        userMessage = `Network error connecting to ${cleanUrl}. This might be due to CORS restrictions or the server being unreachable.`;
+      }
+      
+      alert(userMessage);
       setIsLoadingEndpoints(false);
     }
   };
