@@ -1,0 +1,58 @@
+flowchart TD
+    subgraph "Client Layer"
+        Browser[Web Browser]
+    end
+
+    subgraph "Presentation Layer"
+        ReactApp[React Frontend Application]
+        ReactApp --> |contains| ReactRouter[React Router]
+        ReactApp --> |contains| StateManager[Redux/Context State]
+        ReactApp --> |contains| AuthProvider[Authentication Provider]
+    end
+
+    subgraph "API Layer"
+        Gateway[API Gateway]
+        Gateway --> |routes to| FastAPI[FastAPI Backend]
+        Gateway --> |manages| Auth[Authentication/Authorization]
+        Gateway --> |handles| RateLimit[Rate Limiting]
+    end
+
+    subgraph "Service Layer"
+        FastAPI --> |implements| UserService[User Service]
+        FastAPI --> |implements| TestService[Stress Test Service]
+        FastAPI --> |implements| ResultsService[Results Service]
+        
+        TestService --> |uses| CoreEngine[Stress Test Engine]
+    end
+
+    subgraph "Data Layer"
+        PostgreSQL[PostgreSQL Database]
+        Redis[Redis Cache]
+    end
+
+    subgraph "External Systems"
+        TargetAPIs[Target APIs]
+        EmailService[Email Service]
+        FileStorage[File Storage]
+    end
+
+    %% Connections
+    Browser <--> |HTTPS| ReactApp
+    ReactApp <--> |REST API| Gateway
+    FastAPI <--> PostgreSQL
+    FastAPI <--> Redis
+    CoreEngine <--> TargetAPIs
+    FastAPI <--> EmailService
+    FastAPI <--> FileStorage
+
+    %% Ownership labels
+    classDef ownerFrontend fill:#d8e8f7,stroke:#2980b9
+    classDef ownerBackend fill:#e8f7d8,stroke:#27ae60
+    classDef ownerDevOps fill:#f7e8d8,stroke:#d35400
+    classDef ownerData fill:#e8d8f7,stroke:#8e44ad
+    classDef ownerExternal fill:#f7d8e8,stroke:#c0392b
+
+    class Browser,ReactApp,ReactRouter,StateManager,AuthProvider ownerFrontend
+    class Gateway,FastAPI,UserService,TestService,ResultsService,Auth,RateLimit,CoreEngine ownerBackend
+    class PostgreSQL,Redis ownerData
+    class TargetAPIs,EmailService,FileStorage ownerExternal
