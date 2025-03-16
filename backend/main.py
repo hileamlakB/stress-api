@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
@@ -468,53 +468,59 @@ async def get_user_sessions(email: str):
     Retrieve configuration info for all sessions associated with a specific user.
     This endpoint currently uses mock data that returns three sessions.
     """
-    # Generate mock user ID
-    user_id = str(uuid.uuid4())
-    
-    # Create three mock sessions with configurations
-    sessions = []
-    for i in range(1, 4):
-        session_id = str(uuid.uuid4())
+    try:
+        # Generate mock user ID
+        user_id = str(uuid.uuid4())
         
-        # Create mock configurations for each session
-        configurations = []
-        for j in range(1, 3):  # 2 configurations per session
-            config_id = str(uuid.uuid4())
-            configurations.append(
-                SessionConfigModel(
-                    id=config_id,
-                    session_id=session_id,
-                    endpoint_url=f"https://api.example.com/endpoint{j}",
-                    http_method="GET" if j % 2 == 0 else "POST",
-                    request_headers={"Content-Type": "application/json"},
-                    request_body={"test": f"data{j}"},
-                    request_params={"param1": f"value{j}"},
-                    concurrent_users=10 * j,
-                    ramp_up_time=5,
-                    test_duration=30,
-                    think_time=1,
-                    success_criteria={"status_code": 200}
+        # Create three mock sessions with configurations
+        sessions = []
+        for i in range(1, 4):
+            session_id = str(uuid.uuid4())
+            
+            # Create mock configurations for each session
+            configurations = []
+            for j in range(1, 3):  # 2 configurations per session
+                config_id = str(uuid.uuid4())
+                configurations.append(
+                    SessionConfigModel(
+                        id=config_id,
+                        session_id=session_id,
+                        endpoint_url=f"https://api.example.com/endpoint{j}",
+                        http_method="GET" if j % 2 == 0 else "POST",
+                        request_headers={"Content-Type": "application/json"},
+                        request_body={"test": f"data{j}"},
+                        request_params={"param1": f"value{j}"},
+                        concurrent_users=10 * j,
+                        ramp_up_time=5,
+                        test_duration=30,
+                        think_time=1,
+                        success_criteria={"status_code": 200}
+                    )
+                )
+            
+            # Create mock session with configurations
+            sessions.append(
+                SessionModel(
+                    id=session_id,
+                    name=f"Test Session {i}",
+                    description=f"This is test session {i}",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    configurations=configurations
                 )
             )
         
-        # Create mock session with configurations
-        sessions.append(
-            SessionModel(
-                id=session_id,
-                name=f"Test Session {i}",
-                description=f"This is test session {i}",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                configurations=configurations
-            )
+        # Return mock user response with sessions
+        return UserSessionsResponse(
+            user_id=user_id,
+            email=email,
+            sessions=sessions
         )
-    
-    # Return mock user response with sessions
-    return UserSessionsResponse(
-        user_id=user_id,
-        email=email,
-        sessions=sessions
-    )
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error in get_user_sessions: {str(e)}")
+        # Re-raise the exception to let FastAPI handle it
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 # Endpoint 2: Create a new session configuration
 @app.post("/api/sessions/configuration", response_model=SessionConfigModel)
