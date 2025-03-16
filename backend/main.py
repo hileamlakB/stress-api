@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
@@ -6,6 +6,8 @@ from datetime import datetime
 import httpx
 import asyncio
 import logging
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +36,47 @@ from api_models import (
     DistributionStrategy
 )
 from metrics_generator import metrics_manager
+
+# Session configuration models
+class SessionConfigModel(BaseModel):
+    id: str
+    session_id: str
+    endpoint_url: str
+    http_method: str
+    request_headers: Optional[Dict[str, Any]] = None
+    request_body: Optional[Dict[str, Any]] = None
+    request_params: Optional[Dict[str, Any]] = None
+    concurrent_users: int
+    ramp_up_time: int
+    test_duration: int
+    think_time: int
+    success_criteria: Optional[Dict[str, Any]] = None
+
+class SessionModel(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    configurations: List[SessionConfigModel]
+
+class UserSessionsResponse(BaseModel):
+    user_id: str
+    email: str
+    sessions: List[SessionModel]
+
+class SessionConfigRequest(BaseModel):
+    session_id: str
+    endpoint_url: str
+    http_method: str
+    request_headers: Optional[Dict[str, Any]] = None
+    request_body: Optional[Dict[str, Any]] = None
+    request_params: Optional[Dict[str, Any]] = None
+    concurrent_users: int
+    ramp_up_time: int
+    test_duration: int
+    think_time: int
+    success_criteria: Optional[Dict[str, Any]] = None
 
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
@@ -417,6 +460,93 @@ async def get_test_summary(test_id: str):
         "activeEndpoints": [m.endpoint for m in metrics],
         "peakConcurrentRequests": max(m.concurrent_requests for m in metrics)
     }
+
+# Endpoint 1: Get all sessions and configurations for a user
+@app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
+async def get_user_sessions(email: str):
+    """
+    Retrieve configuration info for all sessions associated with a specific user.
+    This endpoint currently uses mock data that returns three sessions.
+    """
+    try:
+        # Generate mock user ID
+        user_id = str(uuid.uuid4())
+        
+        # Create three mock sessions with configurations
+        sessions = []
+        for i in range(1, 4):
+            session_id = str(uuid.uuid4())
+            
+            # Create mock configurations for each session
+            configurations = []
+            for j in range(1, 3):  # 2 configurations per session
+                config_id = str(uuid.uuid4())
+                configurations.append(
+                    SessionConfigModel(
+                        id=config_id,
+                        session_id=session_id,
+                        endpoint_url=f"https://api.example.com/endpoint{j}",
+                        http_method="GET" if j % 2 == 0 else "POST",
+                        request_headers={"Content-Type": "application/json"},
+                        request_body={"test": f"data{j}"},
+                        request_params={"param1": f"value{j}"},
+                        concurrent_users=10 * j,
+                        ramp_up_time=5,
+                        test_duration=30,
+                        think_time=1,
+                        success_criteria={"status_code": 200}
+                    )
+                )
+            
+            # Create mock session with configurations
+            sessions.append(
+                SessionModel(
+                    id=session_id,
+                    name=f"Test Session {i}",
+                    description=f"This is test session {i}",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    configurations=configurations
+                )
+            )
+        
+        # Return mock user response with sessions
+        return UserSessionsResponse(
+            user_id=user_id,
+            email=email,
+            sessions=sessions
+        )
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error in get_user_sessions: {str(e)}")
+        # Re-raise the exception to let FastAPI handle it
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Endpoint 2: Create a new session configuration
+@app.post("/api/sessions/configuration", response_model=SessionConfigModel)
+async def create_session_configuration(config: SessionConfigRequest):
+    """
+    Publish configuration info into the database.
+    This endpoint currently uses mock data and returns the created configuration with a generated ID.
+    """
+    # Generate mock configuration ID
+    config_id = str(uuid.uuid4())
+    
+    # Return mock configuration with the provided values
+    return SessionConfigModel(
+        id=config_id,
+        session_id=config.session_id,
+        endpoint_url=config.endpoint_url,
+        http_method=config.http_method,
+        request_headers=config.request_headers,
+        request_body=config.request_body,
+        request_params=config.request_params,
+        concurrent_users=config.concurrent_users,
+        ramp_up_time=config.ramp_up_time,
+        test_duration=config.test_duration,
+        think_time=config.think_time,
+        success_criteria=config.success_criteria
+    )
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
