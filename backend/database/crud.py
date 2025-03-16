@@ -12,11 +12,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # User CRUD operations
-def create_user(db: Session, username: str, email: str) -> User:
+def create_user(db: Session, email: str) -> User:
     """Create a new user."""
     try:
         db_user = User(
-            username=username,
             email=email
         )
         db.add(db_user)
@@ -32,10 +31,6 @@ def get_user(db: Session, user_id: uuid.UUID) -> Optional[User]:
     """Get a user by ID."""
     return db.query(User).filter(User.id == user_id).first()
 
-def get_user_by_username(db: Session, username: str) -> Optional[User]:
-    """Get a user by username."""
-    return db.query(User).filter(User.username == username).first()
-
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
     """Get a user by email."""
     return db.query(User).filter(User.email == email).first()
@@ -44,12 +39,10 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> List[User]:
     """Get all users with pagination."""
     return db.query(User).offset(skip).limit(limit).all()
 
-def update_user(db: Session, user_id: uuid.UUID, username: Optional[str] = None, email: Optional[str] = None) -> Optional[User]:
+def update_user(db: Session, user_id: uuid.UUID, email: Optional[str] = None) -> Optional[User]:
     """Update a user's information."""
     db_user = get_user(db, user_id)
     if db_user:
-        if username:
-            db_user.username = username
         if email:
             db_user.email = email
         

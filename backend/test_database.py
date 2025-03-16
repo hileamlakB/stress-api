@@ -28,7 +28,6 @@ def test_database():
             # Create a test user
             logger.info("Creating test user...")
             test_user = User(
-                username="testuser",
                 email="test@example.com"
             )
             db.add(test_user)
@@ -72,7 +71,7 @@ def test_database():
             logger.info("Querying data to verify...")
             
             # Query user
-            queried_user = db.query(User).filter(User.username == "testuser").first()
+            queried_user = db.query(User).filter(User.email == "test@example.com").first()
             logger.info(f"Queried user: {queried_user}")
             
             # Query session

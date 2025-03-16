@@ -32,7 +32,6 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    username = Column(String, nullable=False, unique=True)
     email = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -40,7 +39,7 @@ class User(Base):
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<User(id={self.id}, username={self.username}, email={self.email})>"
+        return f"<User(id={self.id}, email={self.email})>"
 
 class Session(Base):
     __tablename__ = 'sessions'
