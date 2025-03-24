@@ -57,8 +57,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         console.log('Fetching sessions for email:', email);
         
         // Use the full URL with the backend server address for direct access
-        // This bypasses the Vite proxy configuration which might be causing issues
-        const url = `http://localhost:8000/api/user/${email}/sessions`;
+        const url = `http://localhost:8000/api/user/${encodeURIComponent(email)}/sessions`;
         console.log('Fetching from URL:', url);
         
         const response = await fetch(url, {
@@ -67,8 +66,8 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
-          // Enable CORS credentials if needed
-          credentials: 'include',
+          // Use 'same-origin' for credentials to avoid CORS issues
+          credentials: 'same-origin',
           // Ensure we're using the latest data
           cache: 'no-cache',
         });
@@ -78,7 +77,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         if (!response.ok) {
           const errorText = await response.text();
           console.error('Error response body:', errorText);
-          throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'}`);
+          throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`);
         }
         
         const data: UserSessions = await response.json();

@@ -88,7 +88,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=["http://localhost:5173"],  # Frontend development server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -591,44 +591,83 @@ async def get_test_summary(test_id: str):
 async def get_user_sessions(email: str):
     """
     Retrieve configuration info for all sessions associated with a specific user.
-    This endpoint currently uses mock data that returns three sessions.
+    This endpoint currently uses mock data that returns three sessions with the TestConfigRequest schema.
     """
     try:
         # Generate mock user ID
-        user_id = str(uuid.uuid4())
+        user_id = email
         
         # Create three mock sessions with configurations
         sessions = []
+        
+        # Target URLs as specified
+        target_urls = [
+            "https://www.google.com",
+            "https://www.amazon.com",
+            "https://www.barnesandnoble.com"
+        ]
+        
+        # Distribution strategies
+        distribution_strategies = ["sequential", "interleaved", "random"]
+        
         for i in range(1, 4):
-            session_id = str(uuid.uuid4())
+            # Use the URL as the session ID instead of UUID
+            session_id = target_urls[i-1]
             
             # Create mock configurations for each session
             configurations = []
-            for j in range(1, 3):  # 2 configurations per session
-                config_id = str(uuid.uuid4())
-                configurations.append(
-                    SessionConfigModel(
-                        id=config_id,
-                        session_id=session_id,
-                        endpoint_url=f"https://api.example.com/endpoint{j}",
-                        http_method="GET" if j % 2 == 0 else "POST",
-                        request_headers={"Content-Type": "application/json"},
-                        request_body={"test": f"data{j}"},
-                        request_params={"param1": f"value{j}"},
-                        concurrent_users=10 * j,
-                        ramp_up_time=5,
-                        test_duration=30,
-                        think_time=1,
-                        success_criteria={"status_code": 200}
-                    )
+            
+            # Use the endpoint URL as the identifier instead of UUID
+            config_id = target_urls[i-1]
+            
+            # Create different concurrent requests for variety
+            concurrent_requests = 10 * i
+            
+            # Create mock endpoint configurations as specified in the schema
+            endpoint_paths = [f"/api/resource{i}", f"/api/resource{i}/create"]
+            endpoints = [f"GET {endpoint_paths[0]}", f"POST {endpoint_paths[1]}"]
+            
+            # Create mock headers
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer token-{i}"
+            }
+            
+            # Create a TestConfigRequest object for the success_criteria
+            test_config = TestConfigRequest(
+                target_url=target_urls[i-1],
+                concurrent_users=concurrent_requests,
+                request_rate=10,  # Default value as specified
+                duration=60,      # Default value as specified
+                endpoints=endpoints,
+                headers=headers,
+                payload_data={"test": f"data{i}"}
+            )
+            
+            # Create a configuration that uses TestConfigRequest
+            configurations.append(
+                SessionConfigModel(
+                    id=config_id,
+                    session_id=session_id,
+                    endpoint_url=target_urls[i-1],
+                    http_method="GET",
+                    request_headers=headers,
+                    request_body={"test": f"data{i}"},
+                    request_params={"param1": f"value{i}"},
+                    concurrent_users=concurrent_requests,
+                    ramp_up_time=5,
+                    test_duration=60,
+                    think_time=1,
+                    success_criteria=test_config.dict()
                 )
+            )
             
             # Create mock session with configurations
             sessions.append(
                 SessionModel(
                     id=session_id,
                     name=f"Test Session {i}",
-                    description=f"This is test session {i}",
+                    description=f"Test session for {target_urls[i-1]}",
                     created_at=datetime.now(),
                     updated_at=datetime.now(),
                     configurations=configurations
@@ -637,7 +676,7 @@ async def get_user_sessions(email: str):
         
         # Return mock user response with sessions
         return UserSessionsResponse(
-            user_id=user_id,
+            user_id=email,
             email=email,
             sessions=sessions
         )
