@@ -50,7 +50,7 @@ export class ApiService {
    */
   async startStressTest(config: any) {
     try {
-      const response = await fetch('/api/start-advanced-test', {
+      const response = await fetch('/api/advanced-test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

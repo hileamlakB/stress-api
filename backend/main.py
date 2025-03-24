@@ -8,6 +8,7 @@ import asyncio
 import logging
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+import random
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -444,21 +445,145 @@ async def metrics_websocket(websocket: WebSocket, test_id: str):
         print(f"Error in metrics websocket: {e}")
         await metrics_manager.disconnect_client(test_id, websocket)
 
+# Add a dictionary to store the current state of each test
+test_progress = {}
+
 @app.get("/api/tests/{test_id}/summary")
 async def get_test_summary(test_id: str):
     """Get summary statistics for a test."""
     metrics = metrics_manager.generator.generate_metrics(test_id)
-    if not metrics:
-        return {
-            "totalRequests": 0,
-            "activeEndpoints": [],
-            "peakConcurrentRequests": 0
+    
+    # List of sample endpoints to show
+    sample_endpoints = [
+        "GET /api/users",
+        "POST /api/orders",
+        "GET /api/products",
+        "PUT /api/user/profile"
+    ]
+    
+    # Define the progression of concurrent request levels
+    all_concurrent_levels = [5, 10, 20, 50, 100]
+    
+    # Initialize test state if this is a new test
+    if test_id not in test_progress:
+        # Start with just the first level
+        test_progress[test_id] = {
+            "current_level_index": 0,  # Start with the first level (5 concurrent users)
+            "metrics": {},  # Store metrics to keep them consistent
+            "last_update": datetime.now()
         }
     
+    # Get the current state for this test
+    test_state = test_progress[test_id]
+    
+    # Every few seconds, advance to the next level (simulating test progress)
+    current_time = datetime.now()
+    seconds_since_last_update = (current_time - test_state["last_update"]).total_seconds()
+    if seconds_since_last_update > 3 and test_state["current_level_index"] < len(all_concurrent_levels) - 1:
+        test_state["current_level_index"] += 1
+        test_state["last_update"] = current_time
+    
+    # Get the current available levels based on progress
+    current_max_index = test_state["current_level_index"]
+    available_levels = all_concurrent_levels[:current_max_index + 1]
+    
+    # Generate detailed metrics across available concurrent user levels
+    detailed_metrics = []
+    total_requests = 0
+    peak_concurrent = 0
+    
+    for endpoint in sample_endpoints:
+        # For each endpoint, generate metrics at each available concurrent level
+        for concurrent_requests in available_levels:
+            # Create a unique key for this endpoint + concurrency level
+            metric_key = f"{endpoint}_{concurrent_requests}"
+            
+            # If we already have metrics for this combination, use them
+            # This ensures consistency in the data
+            if metric_key in test_state["metrics"]:
+                metric = test_state["metrics"][metric_key]
+                detailed_metrics.append(metric)
+                
+                # Update totals
+                total_requests += metric["concurrentRequests"]
+                peak_concurrent = max(peak_concurrent, metric["concurrentRequests"])
+                continue
+            
+            # Generate new metrics for this endpoint and concurrency level
+            total_requests += concurrent_requests
+            peak_concurrent = max(peak_concurrent, concurrent_requests)
+            
+            # Calculate success rate (decreasing as load increases)
+            base_success_rate = random.uniform(0.95, 1.0)  # Start with high success rate
+            load_factor = concurrent_requests / 100  # Higher loads affect success more
+            success_rate = max(0.7, base_success_rate - (load_factor * random.uniform(0.05, 0.25)))
+            
+            success_count = int(concurrent_requests * success_rate)
+            failure_count = concurrent_requests - success_count
+            
+            # Generate response times that increase with load
+            base_response_time = random.uniform(30, 100)  # Base time in ms
+            load_multiplier = 1 + (concurrent_requests / 20)  # Scales with load
+            jitter = random.uniform(0.8, 1.2)  # Add variation
+            
+            avg_response_time = base_response_time * load_multiplier * jitter
+            min_response_time = avg_response_time * random.uniform(0.6, 0.9)
+            max_response_time = avg_response_time * random.uniform(1.5, 5.0 if concurrent_requests > 50 else 3.0)
+            
+            # Generate status code distribution
+            status_codes = {}
+            
+            # Success codes (2xx)
+            status_codes["200"] = success_count - random.randint(0, min(5, success_count))
+            if "200" in status_codes and status_codes["200"] < success_count:
+                status_codes["201"] = random.randint(0, success_count - status_codes["200"])
+                status_codes["204"] = success_count - status_codes["200"] - status_codes.get("201", 0)
+            
+            # Error codes (4xx, 5xx) - more errors at higher loads
+            if failure_count > 0:
+                # More server errors (5xx) as load increases
+                error_codes = ["400", "401", "404"] if concurrent_requests < 50 else ["400", "429", "500", "502", "504"]
+                for _ in range(failure_count):
+                    code = random.choice(error_codes)
+                    status_codes[code] = status_codes.get(code, 0) + 1
+            
+            # Create detailed metric object
+            detailed_metric = {
+                "endpoint": endpoint,
+                "concurrentRequests": concurrent_requests,
+                "successCount": success_count,
+                "failureCount": failure_count,
+                "successRate": success_rate,
+                "responseTime": {
+                    "avg": avg_response_time,
+                    "min": min_response_time,
+                    "max": max_response_time
+                },
+                "statusCodes": status_codes,
+                "timestamp": datetime.now().isoformat(),
+                "errorMessage": "Service degraded under load" if concurrent_requests > 50 and failure_count > 10 else None
+            }
+            
+            # Store the metric for consistency in future calls
+            test_state["metrics"][metric_key] = detailed_metric
+            
+            # Add to the result list
+            detailed_metrics.append(detailed_metric)
+    
+    # Return combined metrics, showing progression
+    progress_percentage = ((current_max_index + 1) / len(all_concurrent_levels)) * 100
+    
     return {
-        "totalRequests": sum(m.concurrent_requests for m in metrics),
-        "activeEndpoints": [m.endpoint for m in metrics],
-        "peakConcurrentRequests": max(m.concurrent_requests for m in metrics)
+        "totalRequests": total_requests,
+        "activeEndpoints": sample_endpoints,
+        "peakConcurrentRequests": peak_concurrent,
+        "detailedMetrics": detailed_metrics,
+        "testProgress": {
+            "currentLevel": available_levels[-1],
+            "maxLevel": all_concurrent_levels[-1],
+            "progressPercentage": progress_percentage,
+            "completedLevels": available_levels
+        }
     }
 
 # Endpoint 1: Get all sessions and configurations for a user

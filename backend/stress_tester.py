@@ -386,7 +386,8 @@ class StressTester:
                     # Create the task
                     task = self.execute_request(
                         client=client,
-                        url=url,
+                        base_url=target_url,
+                        endpoint_path=endpoint_data['path'],
                         method=endpoint_data['method'],
                         headers=req_headers,
                         path_params=path_params,
@@ -439,7 +440,7 @@ class StressTester:
         
         for _ in range(concurrent_requests):
             # Prepare the request
-            url, path_params, query_params, json_data, req_headers = self._prepare_endpoint_request(
+            full_url, path_params, query_params, json_data, req_headers = self._prepare_endpoint_request(
                 base_url=target_url,
                 endpoint_path=endpoint_path,
                 method=endpoint_method,
@@ -451,10 +452,18 @@ class StressTester:
             if headers:
                 req_headers.update(headers)
             
+            # Get base_url and path from full_url
+            base_url_parts = full_url.split('/')
+            # Get the protocol and domain
+            base_url_str = '/'.join(base_url_parts[:3])
+            # Get the path by removing the protocol and domain
+            path_str = '/'.join(base_url_parts[3:])
+            
             # Create the task
             task = self.execute_request(
                 client=client,
-                url=url,
+                base_url=base_url_str,
+                endpoint_path=path_str,
                 method=endpoint_method,
                 headers=req_headers,
                 path_params=path_params,
@@ -539,7 +548,9 @@ class StressTester:
                         target_url_str = str(target_url)
                         task = self.execute_request(
                             client=client,
-                            url=f"{target_url_str.rstrip('/')}/{endpoint.lstrip('/')}",
+                            base_url=target_url_str,
+                            endpoint_path=endpoint.lstrip('/'),
+                            method="GET",
                             headers=headers,
                             json_data=payload_data
                         )

@@ -10,22 +10,14 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import { cn } from '../lib/utils';
-import { MetricsService, EndpointMetric } from '../services/MetricsService';
+import { MetricsService, DetailedEndpointMetric } from '../services/MetricsService';
 
 interface MetricsChartProps {
   className?: string;
   testId: string;
   chartType: 'avgResponse' | 'successRate' | 'minResponse' | 'maxResponse';
   title: string;
-}
-
-interface EndpointMetric {
-  concurrentRequests: number;
-  avgResponseTime: number;
-  minResponseTime: number;
-  maxResponseTime: number;
-  successRate: number;
-  endpoint: string;
+  detailedMetrics?: DetailedEndpointMetric[];
 }
 
 const endpointColors = [
@@ -39,51 +31,36 @@ const endpointColors = [
   '#8dd1e1',
 ];
 
-const concurrentRequests = [1, 5, 10, 20, 50, 100, 200, 500];
-
-// Simulate metrics until WebSocket is connected
-function generateSimulatedMetric(endpoint: string, concurrent: number): EndpointMetric {
-  return {
-    concurrentRequests: concurrent,
-    avgResponseTime: 50 + concurrent * 0.5 + Math.random() * 20,
-    minResponseTime: 20 + concurrent * 0.2 + Math.random() * 5,
-    maxResponseTime: 100 + concurrent * 2 + Math.random() * 50,
-    successRate: Math.max(80, Math.min(100, 100 - (concurrent * 0.02) - Math.random() * 2)),
-    endpoint
-  };
+// Transform detailed metrics into chart-friendly format
+function transformMetricsForChart(metrics: DetailedEndpointMetric[]): any[] {
+  if (!metrics || metrics.length === 0) return [];
+  
+  return metrics.map(metric => ({
+    endpoint: metric.endpoint,
+    concurrentRequests: metric.concurrentRequests,
+    avgResponseTime: metric.responseTime.avg,
+    minResponseTime: metric.responseTime.min,
+    maxResponseTime: metric.responseTime.max,
+    successRate: metric.successRate * 100, // Convert to percentage
+  }));
 }
 
-function generateSimulatedData(endpoints: string[]): EndpointMetric[] {
-  const data: EndpointMetric[] = [];
-  concurrentRequests.forEach(concurrent => {
-    endpoints.forEach(endpoint => {
-      data.push(generateSimulatedMetric(endpoint, concurrent));
-    });
-  });
-  return data;
-}
-
-export function MetricsChart({ className, testId, chartType, title }: MetricsChartProps) {
-  const [metrics, setMetrics] = useState<EndpointMetric[]>([]);
+export function MetricsChart({ className, testId, chartType, title, detailedMetrics = [] }: MetricsChartProps) {
+  const [chartData, setChartData] = useState<any[]>([]);
   const [endpoints, setEndpoints] = useState<string[]>([]);
 
   useEffect(() => {
-    // Start with simulated data
-    setMetrics(generateSimulatedData(['/api/test1', '/api/test2', '/api/test3']));
-    
-    const metricsService = MetricsService.getInstance();
-    
-    const handleMetricsUpdate = (newMetrics: EndpointMetric[]) => {
-      setMetrics(newMetrics);
-      setEndpoints(Array.from(new Set(newMetrics.map(m => m.endpoint))));
-    };
-    
-    metricsService.subscribeToMetrics(testId, handleMetricsUpdate);
-    
-    return () => {
-      metricsService.unsubscribeFromMetrics(testId, handleMetricsUpdate);
-    };
-  }, [testId]);
+    // Transform detailed metrics for chart display
+    if (detailedMetrics && detailedMetrics.length > 0) {
+      const transformedData = transformMetricsForChart(detailedMetrics);
+      setChartData(transformedData);
+      setEndpoints(Array.from(new Set(transformedData.map(m => m.endpoint))));
+    } else {
+      // Use empty data when no metrics are available
+      setChartData([]);
+      setEndpoints([]);
+    }
+  }, [detailedMetrics]);
 
   const getYAxisLabel = () => {
     switch (chartType) {
@@ -113,6 +90,15 @@ export function MetricsChart({ className, testId, chartType, title }: MetricsCha
     }
   };
 
+  // If no data, show empty state
+  if (chartData.length === 0) {
+    return (
+      <div className={cn("w-full h-[400px] flex items-center justify-center", className)}>
+        <p className="text-gray-400">No data available for chart</p>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("w-full h-[400px]", className)}>
       <h3 className="text-lg font-semibold mb-2 px-4">{title}</h3>
@@ -123,7 +109,6 @@ export function MetricsChart({ className, testId, chartType, title }: MetricsCha
             <XAxis
               dataKey="concurrentRequests"
               type="number"
-              domain={[0, 500]}
               label={{ value: 'Concurrent Requests', position: 'bottom' }}
             />
             <YAxis
@@ -149,14 +134,12 @@ export function MetricsChart({ className, testId, chartType, title }: MetricsCha
               <Line
                 key={endpoint}
                 type="monotone"
-                data={metrics.filter(m => m.endpoint === endpoint)}
+                data={chartData.filter(m => m.endpoint === endpoint)}
                 dataKey={getDataKey()}
                 name={endpoint}
                 stroke={endpointColors[index % endpointColors.length]}
                 dot={true}
                 activeDot={{ r: 6 }}
-                animationDuration={300}
-                isAnimationActive={true}
               />
             ))}
           </LineChart>

@@ -7,10 +7,27 @@ export interface EndpointMetric {
   successRate: number;
 }
 
+export interface DetailedEndpointMetric {
+  endpoint: string;
+  concurrentRequests: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+  responseTime: {
+    avg: number;
+    min: number;
+    max: number;
+  };
+  statusCodes: Record<string, number>;
+  timestamp: string;
+  errorMessage: string | null;
+}
+
 export interface TestSummary {
   totalRequests: number;
   activeEndpoints: string[];
   peakConcurrentRequests: number;
+  detailedMetrics?: DetailedEndpointMetric[];
 }
 
 type MetricsListener = (metrics: EndpointMetric[]) => void;
@@ -35,7 +52,8 @@ export class MetricsService {
 
   startMonitoring(testId: string) {
     this.testId = testId;
-    this.connectWebSocket();
+    // Disable WebSocket connection for now
+    // this.connectWebSocket();
     this.startSummaryPolling();
   }
 
