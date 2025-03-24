@@ -7,7 +7,7 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
 import { SessionSidebar, Session } from '../components/SessionSidebar';
 import apiService from '../services/ApiService';
-import { DistributionStrategy } from '../types/api';
+import { DistributionStrategy, StressTestConfig } from '../types/api';
 
 // Define types for our state
 type Endpoint = {
@@ -225,7 +225,7 @@ export function Dashboard() {
       });
 
       // Create test config
-      const testConfig = {
+      const testConfig: StressTestConfig = {
         target_url: baseUrl,
         strategy: distributionMode,
         max_concurrent_users: concurrentRequests,
@@ -236,16 +236,10 @@ export function Dashboard() {
         use_random_session: false
       };
 
-      // For now, just simulate a response
-      // In a real implementation, uncomment this to call the actual API
-      // const response = await apiService.startStressTest(testConfig);
-      // setActiveTestId(response.test_id);
-      
-      // Simulation for now
-      setTimeout(() => {
-        setActiveTestId(`test-${Math.random().toString(36).substr(2, 9)}`);
-        setLoading(false);
-      }, 1500);
+      // Call the actual API to start the stress test
+      const response = await apiService.startStressTest(testConfig);
+      setActiveTestId(response.test_id);
+      setLoading(false);
     } catch (error) {
       console.error('Error starting load test:', error);
       alert('Failed to start load test');
