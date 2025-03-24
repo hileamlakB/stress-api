@@ -73,15 +73,48 @@ export function Dashboard() {
     // Use the selected session's configuration to populate the form
     if (session && session.configurations && session.configurations.length > 0) {
       const config = session.configurations[0]; // Use the first configuration
+      console.log('Session configuration:', config);
       
-      // Set the base URL from the configuration
-      setBaseUrl(config.endpoint_url);
+      // Check if we have success_criteria with TestConfigRequest data
+      if (config.success_criteria && config.success_criteria.target_url) {
+        const testConfig = config.success_criteria;
+        console.log('Using test config from success_criteria:', testConfig);
+        
+        // Set the base URL from the test configuration
+        setBaseUrl(testConfig.target_url);
+        
+        // Set concurrent users
+        setConcurrentRequests(testConfig.concurrent_users);
+        
+        // Set selected endpoints if available
+        if (testConfig.endpoints && Array.isArray(testConfig.endpoints)) {
+          setSelectedEndpoints(testConfig.endpoints);
+          
+          // Also populate the endpoints list if it's empty
+          if (endpoints.length === 0) {
+            const mappedEndpoints: Endpoint[] = testConfig.endpoints.map((endpoint: string) => {
+              const [method, path] = endpoint.split(' ');
+              return {
+                method,
+                path,
+                description: ''
+              };
+            });
+            setEndpoints(mappedEndpoints);
+          }
+        }
+        
+        // Set auth headers if available
+        if (testConfig.headers) {
+          setAuthJson(JSON.stringify(testConfig.headers, null, 2));
+          setShowAuthConfig(Object.keys(testConfig.headers).length > 0);
+        }
+      } else {
+        // Fall back to the old behavior
+        setBaseUrl(config.endpoint_url);
+        setConcurrentRequests(config.concurrent_users);
+      }
       
-      // Set concurrent users
-      setConcurrentRequests(config.concurrent_users);
-      
-      // If there are multiple configurations, we could populate the selected endpoints
-      // but for now, we'll just log this information
       console.log(`Loaded configuration with ${session.configurations.length} endpoints`);
     }
   };
