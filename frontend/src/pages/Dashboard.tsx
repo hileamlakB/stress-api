@@ -35,11 +35,13 @@ export function Dashboard() {
   // Test configuration state
   const [concurrentRequests, setConcurrentRequests] = useState(10);
   const [distributionMode, setDistributionMode] = useState<DistributionStrategy>('sequential');
+  const [availableStrategies, setAvailableStrategies] = useState<DistributionStrategy[]>([]);
   
   const navigate = useNavigate();
 
   useEffect(() => {
     checkAuth();
+    fetchDistributionStrategies();
   }, []);
 
   const checkAuth = async () => {
@@ -50,6 +52,21 @@ export function Dashboard() {
       }
     } catch (error) {
       navigate('/login');
+    }
+  };
+
+  const fetchDistributionStrategies = async () => {
+    try {
+      const strategies = await apiService.fetchDistributionStrategies();
+      setAvailableStrategies(strategies);
+      // Set default strategy if none is set and we have strategies available
+      if (strategies.length > 0 && !distributionMode) {
+        setDistributionMode(strategies[0]);
+      }
+    } catch (error) {
+      console.error('Error fetching distribution strategies:', error);
+      // Fallback to default hardcoded values in case of error
+      setAvailableStrategies(['sequential', 'interleaved', 'random'] as DistributionStrategy[]);
     }
   };
 
@@ -483,77 +500,36 @@ export function Dashboard() {
                   Distribution Strategy
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div
-                    onClick={() => setDistributionMode('sequential')}
-                    className={`border ${
-                      distributionMode === 'sequential' 
-                        ? 'border-indigo-500 bg-indigo-50' 
-                        : 'border-gray-200 hover:bg-gray-50'
-                    } rounded-lg p-3 cursor-pointer transition-colors`}
-                  >
-                    <div className="flex items-center mb-1">
-                      <input
-                        type="radio"
-                        checked={distributionMode === 'sequential'}
-                        readOnly
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900 ml-2">
-                        Sequential testing
-                      </span>
+                  {availableStrategies.map(strategy => (
+                    <div
+                      key={strategy}
+                      onClick={() => setDistributionMode(strategy)}
+                      className={`border ${
+                        distributionMode === strategy 
+                          ? 'border-indigo-500 bg-indigo-50' 
+                          : 'border-gray-200 hover:bg-gray-50'
+                      } rounded-lg p-3 cursor-pointer transition-colors`}
+                    >
+                      <div className="flex items-center mb-1">
+                        <input
+                          type="radio"
+                          checked={distributionMode === strategy}
+                          readOnly
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm font-medium text-gray-900 ml-2">
+                          {strategy.charAt(0).toUpperCase() + strategy.slice(1)} testing
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {strategy === 'sequential' 
+                          ? 'Requests are sent one after another in order' 
+                          : strategy === 'interleaved' 
+                            ? 'Requests are distributed evenly across endpoints' 
+                            : 'Requests are sent randomly to selected endpoints'}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500">
-                      Requests are sent one after another in order
-                    </p>
-                  </div>
-                  
-                  <div
-                    onClick={() => setDistributionMode('interleaved')}
-                    className={`border ${
-                      distributionMode === 'interleaved' 
-                        ? 'border-indigo-500 bg-indigo-50' 
-                        : 'border-gray-200 hover:bg-gray-50'
-                    } rounded-lg p-3 cursor-pointer transition-colors`}
-                  >
-                    <div className="flex items-center mb-1">
-                      <input
-                        type="radio"
-                        checked={distributionMode === 'interleaved'}
-                        readOnly
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900 ml-2">
-                        Interleaved testing
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Requests are distributed evenly across endpoints
-                    </p>
-                  </div>
-                  
-                  <div
-                    onClick={() => setDistributionMode('random')}
-                    className={`border ${
-                      distributionMode === 'random' 
-                        ? 'border-indigo-500 bg-indigo-50' 
-                        : 'border-gray-200 hover:bg-gray-50'
-                    } rounded-lg p-3 cursor-pointer transition-colors`}
-                  >
-                    <div className="flex items-center mb-1">
-                      <input
-                        type="radio"
-                        checked={distributionMode === 'random'}
-                        readOnly
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm font-medium text-gray-900 ml-2">
-                        Random distribution
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Requests are sent randomly to selected endpoints
-                    </p>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>

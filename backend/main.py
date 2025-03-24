@@ -34,6 +34,7 @@ from api_models import (
     DistributionStrategy
 )
 from metrics_generator import metrics_manager
+from typing import List
 
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
@@ -417,6 +418,17 @@ async def get_test_summary(test_id: str):
         "activeEndpoints": [m.endpoint for m in metrics],
         "peakConcurrentRequests": max(m.concurrent_requests for m in metrics)
     }
+
+# Endpoint to get available distribution strategies
+@app.get("/api/distribution-strategies", response_model=List[DistributionStrategy])
+async def get_distribution_strategies():
+    """
+    Returns all available distribution strategies for stress testing.
+    
+    Returns:
+        List[DistributionStrategy]: A list of all available distribution strategies.
+    """
+    return [strategy for strategy in DistributionStrategy]
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
