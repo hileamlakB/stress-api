@@ -431,6 +431,17 @@ async def stop_advanced_test(test_id: str):
             detail=str(e)
         )
 
+# Endpoint to get available distribution strategies
+@app.get("/api/distribution-strategies")
+async def get_distribution_strategies():
+    """
+    Returns all available distribution strategies for stress testing.
+    
+    Returns:
+        List[DistributionStrategy]: A list of all available distribution strategies.
+    """
+    return [strategy.value for strategy in DistributionStrategy]
+
 @app.websocket("/ws/metrics/{test_id}")
 async def metrics_websocket(websocket: WebSocket, test_id: str):
     await metrics_manager.connect_client(test_id, websocket)
