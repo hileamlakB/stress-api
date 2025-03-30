@@ -113,11 +113,25 @@ class DistributionStrategy(str, Enum):
     INTERLEAVED = "interleaved"
     RANDOM = "random"
 
+class DataGenerationStrategy(str, Enum):
+    """Strategy for generating test data for endpoints"""
+    RANDOM_EACH_TIME = "random_each_time"  # Generate new random data for each request
+    CONSISTENT_RANDOM = "consistent_random"  # Use the same random data for all requests
+    USER_DEFINED = "user_defined"  # Use user-defined data
+
 class StressTestEndpointConfig(BaseModel):
     path: str = Field(..., description="Endpoint path")
     method: str = Field(..., description="HTTP method")
     weight: Optional[float] = Field(1.0, description="Weight for distribution strategies")
     custom_parameters: Optional[Dict[str, Any]] = Field(None, description="Custom parameters for this endpoint")
+    data_strategy: DataGenerationStrategy = Field(
+        DataGenerationStrategy.CONSISTENT_RANDOM, 
+        description="Strategy for generating test data"
+    )
+    test_data_samples: Optional[List[Dict[str, Any]]] = Field(
+        None, 
+        description="Sample data to use for testing (used with CONSISTENT_RANDOM or USER_DEFINED strategies)"
+    )
 
 class StressTestConfig(BaseModel):
     target_url: HttpUrl = Field(..., description="URL of the target API to test")
@@ -156,3 +170,50 @@ class StressTestResultsResponse(BaseModel):
     end_time: Optional[datetime] = Field(None, description="Test end timestamp")
     results: List[EndpointResult] = Field(default_factory=list, description="List of endpoint results")
     summary: Dict[str, Any] = Field(..., description="Test summary statistics")
+
+class DataGenerationRequest(BaseModel):
+    schema_type: str = Field(..., description="Schema type (string, integer, number, boolean, object, array)")
+    schema_format: Optional[str] = Field(None, description="Schema format (e.g., email, date, uri)")
+    schema: Optional[Dict[str, Any]] = Field(None, description="Full schema definition for complex types")
+    enum: Optional[List[Any]] = Field(None, description="Enum values if applicable")
+    count: Optional[int] = Field(1, ge=1, le=100, description="Number of data samples to generate")
+
+class DataGenerationResponse(BaseModel):
+    generated_data: Any = Field(..., description="Generated data based on the provided schema")
+    count: int = Field(..., description="Number of data samples generated")
+    schema_type: str = Field(..., description="Schema type that was used")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of generation")
+
+class EndpointDataGenerationRequest(BaseModel):
+    endpoint_schema: EndpointSchema = Field(..., description="Schema of the endpoint to generate data for")
+    include_headers: bool = Field(True, description="Whether to include header parameters")
+    include_query: bool = Field(True, description="Whether to include query parameters")
+    include_path: bool = Field(True, description="Whether to include path parameters") 
+    include_body: bool = Field(True, description="Whether to include request body")
+    count: Optional[int] = Field(1, ge=1, le=10, description="Number of data samples to generate")
+
+class EndpointTestDataRequest(BaseModel):
+    """Request to generate test data for an endpoint in a specific format for the frontend"""
+    endpoint_key: str = Field(..., description="Endpoint key in format 'METHOD path'")
+    endpoint_schema: EndpointSchema = Field(..., description="Schema of the endpoint")
+    sample_count: int = Field(1, ge=1, le=20, description="Number of data samples to generate")
+
+class EndpointTestDataResponse(BaseModel):
+    """Response containing test data for an endpoint"""
+    endpoint_key: str = Field(..., description="Endpoint key in format 'METHOD path'")
+    data_samples: List[Dict[str, Any]] = Field(..., description="Generated data samples for the endpoint")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of generation")
+
+class TestScenarioGenerationRequest(BaseModel):
+    target_url: HttpUrl = Field(..., description="URL of the target API")
+    endpoints: List[EndpointSchema] = Field(..., description="List of endpoints to generate scenarios for")
+    scenario_count: int = Field(1, ge=1, le=5, description="Number of test scenarios to generate")
+    include_dependencies: bool = Field(True, description="Whether to include dependency relationships between endpoints")
+    include_workflows: bool = Field(True, description="Whether to generate workflow sequences for common user journeys")
+    
+class TestScenario(BaseModel):
+    name: str = Field(..., description="Descriptive name for the scenario")
+    description: str = Field(..., description="Description of what this scenario tests")
+    endpoints: List[Dict[str, Any]] = Field(..., description="Endpoints involved with sample data")
+    dependencies: Optional[List[Dict[str, Any]]] = Field(None, description="Dependencies between endpoints")
+    workflow: Optional[List[str]] = Field(None, description="Suggested execution order")

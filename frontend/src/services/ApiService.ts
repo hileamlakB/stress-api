@@ -121,6 +121,43 @@ export class ApiService {
       throw error;
     }
   }
+
+  /**
+   * Generate test data for a specific endpoint
+   * @param endpointKey The endpoint key in format "METHOD path"
+   * @param endpointSchema The schema of the endpoint
+   * @param sampleCount Number of samples to generate
+   * @returns Generated test data samples
+   */
+  async generateEndpointTestData(
+    endpointKey: string,
+    endpointSchema: EndpointSchema,
+    sampleCount: number = 1
+  ) {
+    try {
+      const response = await fetch('/api/endpoint-test-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          endpoint_key: endpointKey,
+          endpoint_schema: endpointSchema,
+          sample_count: sampleCount
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate test data');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error generating endpoint test data:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();
