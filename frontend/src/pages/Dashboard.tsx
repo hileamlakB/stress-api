@@ -7,13 +7,18 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
 import { SessionSidebar, Session } from '../components/SessionSidebar';
 import apiService from '../services/ApiService';
-import { DistributionStrategy, StressTestConfig } from '../types/api';
+import { DistributionStrategy, StressTestConfig, StressTestEndpointConfig, EndpointSchema } from '../types/api';
+import { EndpointsList } from '../components/endpoints/EndpointsList';
 
 // Define types for our state
 type Endpoint = {
   method: string;
   path: string;
   description?: string;
+  // Adding these properties to make Endpoint compatible with EndpointSchema
+  summary: string;
+  parameters: Array<any>;
+  responses: Record<string, any>;
 };
 
 export function Dashboard() {
@@ -41,6 +46,9 @@ export function Dashboard() {
   
   // Session state
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  
+  // New state for endpoint configurations
+  const [endpointConfigs, setEndpointConfigs] = useState<Record<string, StressTestEndpointConfig>>({});
   
   const navigate = useNavigate();
 
@@ -118,7 +126,10 @@ export function Dashboard() {
               return {
                 method,
                 path,
-                description: ''
+                description: '',
+                summary: '',
+                parameters: [],
+                responses: {}
               };
             });
             setEndpoints(mappedEndpoints);
@@ -169,7 +180,10 @@ export function Dashboard() {
       const mappedEndpoints: Endpoint[] = endpointData.map(endpoint => ({
         method: endpoint.method,
         path: endpoint.path,
-        description: endpoint.description || endpoint.summary
+        description: endpoint.description || endpoint.summary,
+        summary: endpoint.summary,
+        parameters: endpoint.parameters || [],
+        responses: endpoint.responses || {}
       }));
       
       if (mappedEndpoints.length === 0) {
@@ -268,14 +282,18 @@ export function Dashboard() {
         headers = JSON.parse(authJson);
       }
 
-      // Prepare endpoints config
-      const endpointConfigs = selectedEndpoints.map(endpoint => {
+      // Prepare endpoints config, now using our data generation configurations if available
+      const configuredEndpoints: StressTestEndpointConfig[] = selectedEndpoints.map(endpoint => {
         const [method, path] = endpoint.split(' ');
-        return {
+        
+        // Use the endpoint configuration if it exists
+        const config: StressTestEndpointConfig = endpointConfigs[endpoint] || {
           method,
           path,
           weight: 1.0
         };
+        
+        return config;
       });
 
       // Create test config
@@ -285,7 +303,7 @@ export function Dashboard() {
         max_concurrent_users: concurrentRequests,
         request_rate: 10,  // Default value
         duration: 60,      // Default value
-        endpoints: endpointConfigs,
+        endpoints: configuredEndpoints,
         headers,
         use_random_session: false
       };
@@ -299,6 +317,11 @@ export function Dashboard() {
       alert('Failed to start load test');
       setLoading(false);
     }
+  };
+
+  // Handle endpoint configuration changes
+  const handleEndpointConfigChange = (configs: Record<string, StressTestEndpointConfig>) => {
+    setEndpointConfigs(configs);
   };
 
   return (
@@ -530,6 +553,15 @@ export function Dashboard() {
                 </div>
               )}
             </div>
+            
+            {/* Data Generation Configuration Section - New Component */}
+            {selectedEndpoints.length > 0 && (
+              <EndpointsList
+                selectedEndpoints={selectedEndpoints}
+                endpointsData={endpoints}
+                onEndpointConfigChange={handleEndpointConfigChange}
+              />
+            )}
             
             {/* Test Configuration Section */}
             <div className="mb-6">

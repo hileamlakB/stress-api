@@ -40,7 +40,9 @@ from api_models import (
     DataGenerationResponse,
     EndpointDataGenerationRequest,
     TestScenarioGenerationRequest,
-    TestScenario
+    TestScenario,
+    EndpointTestDataRequest,
+    EndpointTestDataResponse
 )
 from metrics_generator import metrics_manager
 
@@ -957,6 +959,75 @@ async def generate_endpoint_data(request: EndpointDataGenerationRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error generating endpoint data: {str(e)}"
+        )
+
+# Endpoint to generate test data for a UI endpoint with specific format
+@app.post("/api/endpoint-test-data", response_model=EndpointTestDataResponse)
+async def generate_endpoint_test_data(request: EndpointTestDataRequest):
+    """Generate test data samples for a specific endpoint in the format needed by the UI."""
+    try:
+        data_generator = RequestDataGenerator()
+        
+        # Result data samples
+        data_samples = []
+        
+        # Get the method and path from the endpoint key
+        method, path = request.endpoint_key.split(' ', 1)
+        
+        for _ in range(request.sample_count):
+            # Create a sample with all types of parameters
+            sample = {}
+            
+            # Generate path parameters
+            path_params = {}
+            for param in request.endpoint_schema.parameters:
+                if param.location == 'path' and param.param_schema:
+                    param_type = param.param_schema.get('type', 'string')
+                    param_format = param.param_schema.get('format')
+                    param_enum = param.param_schema.get('enum')
+                    path_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
+            if path_params:
+                sample["path_parameters"] = path_params
+            
+            # Generate query parameters
+            query_params = {}
+            for param in request.endpoint_schema.parameters:
+                if param.location == 'query' and param.param_schema:
+                    param_type = param.param_schema.get('type', 'string')
+                    param_format = param.param_schema.get('format')
+                    param_enum = param.param_schema.get('enum')
+                    query_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
+            if query_params:
+                sample["query_parameters"] = query_params
+            
+            # Generate header parameters
+            headers = {}
+            for param in request.endpoint_schema.parameters:
+                if param.location == 'header' and param.param_schema:
+                    param_type = param.param_schema.get('type', 'string')
+                    param_format = param.param_schema.get('format')
+                    param_enum = param.param_schema.get('enum')
+                    headers[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
+            if headers:
+                sample["headers"] = headers
+            
+            # Generate request body
+            if request.endpoint_schema.request_body:
+                sample["body"] = data_generator.generate_request_data(request.endpoint_schema.request_body)
+            
+            # Add the sample to the result
+            data_samples.append(sample)
+        
+        return EndpointTestDataResponse(
+            endpoint_key=request.endpoint_key,
+            data_samples=data_samples
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating endpoint test data: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error generating endpoint test data: {str(e)}"
         )
 
 # Endpoint to generate complete test scenarios

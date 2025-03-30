@@ -113,11 +113,25 @@ class DistributionStrategy(str, Enum):
     INTERLEAVED = "interleaved"
     RANDOM = "random"
 
+class DataGenerationStrategy(str, Enum):
+    """Strategy for generating test data for endpoints"""
+    RANDOM_EACH_TIME = "random_each_time"  # Generate new random data for each request
+    CONSISTENT_RANDOM = "consistent_random"  # Use the same random data for all requests
+    USER_DEFINED = "user_defined"  # Use user-defined data
+
 class StressTestEndpointConfig(BaseModel):
     path: str = Field(..., description="Endpoint path")
     method: str = Field(..., description="HTTP method")
     weight: Optional[float] = Field(1.0, description="Weight for distribution strategies")
     custom_parameters: Optional[Dict[str, Any]] = Field(None, description="Custom parameters for this endpoint")
+    data_strategy: DataGenerationStrategy = Field(
+        DataGenerationStrategy.CONSISTENT_RANDOM, 
+        description="Strategy for generating test data"
+    )
+    test_data_samples: Optional[List[Dict[str, Any]]] = Field(
+        None, 
+        description="Sample data to use for testing (used with CONSISTENT_RANDOM or USER_DEFINED strategies)"
+    )
 
 class StressTestConfig(BaseModel):
     target_url: HttpUrl = Field(..., description="URL of the target API to test")
@@ -177,6 +191,18 @@ class EndpointDataGenerationRequest(BaseModel):
     include_path: bool = Field(True, description="Whether to include path parameters") 
     include_body: bool = Field(True, description="Whether to include request body")
     count: Optional[int] = Field(1, ge=1, le=10, description="Number of data samples to generate")
+
+class EndpointTestDataRequest(BaseModel):
+    """Request to generate test data for an endpoint in a specific format for the frontend"""
+    endpoint_key: str = Field(..., description="Endpoint key in format 'METHOD path'")
+    endpoint_schema: EndpointSchema = Field(..., description="Schema of the endpoint")
+    sample_count: int = Field(1, ge=1, le=20, description="Number of data samples to generate")
+
+class EndpointTestDataResponse(BaseModel):
+    """Response containing test data for an endpoint"""
+    endpoint_key: str = Field(..., description="Endpoint key in format 'METHOD path'")
+    data_samples: List[Dict[str, Any]] = Field(..., description="Generated data samples for the endpoint")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp of generation")
 
 class TestScenarioGenerationRequest(BaseModel):
     target_url: HttpUrl = Field(..., description="URL of the target API")
