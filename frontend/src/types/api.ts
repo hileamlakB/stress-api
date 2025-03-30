@@ -36,9 +36,69 @@ export type StressTestEndpointConfig = {
 
 export type DistributionStrategy = 'sequential' | 'interleaved' | 'random';
 
+// New types for strategy requirements
+export type RequirementFieldType = 'number' | 'boolean' | 'string' | 'select';
+
+export type RequirementField = {
+  type: RequirementFieldType;
+  label: string;
+  description: string;
+  default_value: any;
+  required: boolean;
+  options?: string[];
+  min?: number;
+  max?: number;
+};
+
+export type EndpointRequirementType = 'percentage' | 'rate' | 'weight';
+export type DefaultDistributionType = 'even' | 'weighted' | 'custom';
+
+export type EndpointRequirement = {
+  type: EndpointRequirementType;
+  description: string;
+  must_total?: number;
+  default_distribution: DefaultDistributionType;
+};
+
+export type StrategyRequirements = {
+  name: string;
+  description: string;
+  general_requirements: Record<string, RequirementField>;
+  endpoint_specific_requirements: boolean;
+  endpoint_requirements?: EndpointRequirement;
+};
+
+export type DistributionRequirementsResponse = {
+  strategies: Record<string, StrategyRequirements>;
+};
+
+// Types for strategy-specific options
+export type SequentialOptions = {
+  delay_between_requests_ms?: number;
+  repeat_sequence?: number;
+};
+
+export type InterleavedOptions = {
+  round_robin_batch_size?: number;
+  endpoint_distribution?: Record<string, number>; // Maps endpoint to percentage
+};
+
+export type RandomOptions = {
+  seed?: number;
+  distribution_pattern?: 'uniform' | 'weighted' | 'gaussian';
+  rate_limit_per_endpoint?: Record<string, number>; // Maps endpoint to rate limit
+};
+
+export type StrategyOptions = {
+  sequential?: SequentialOptions;
+  interleaved?: InterleavedOptions;
+  random?: RandomOptions;
+};
+
 export type StressTestConfig = {
   target_url: string;
   strategy: DistributionStrategy;
+  strategy_options?: StrategyOptions;
   max_concurrent_users: number;
   request_rate: number;
   duration: number;

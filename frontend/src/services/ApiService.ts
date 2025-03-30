@@ -121,6 +121,31 @@ export class ApiService {
       throw error;
     }
   }
+
+  /**
+   * Fetch distribution requirements for all strategies
+   * @returns Map of strategy requirements
+   */
+  async fetchDistributionRequirements(): Promise<any> {
+    try {
+      const response = await fetch('/api/distribution-requirements', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch distribution requirements');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching distribution requirements:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();

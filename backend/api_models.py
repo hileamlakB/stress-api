@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, HttpUrl
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -156,3 +156,29 @@ class StressTestResultsResponse(BaseModel):
     end_time: Optional[datetime] = Field(None, description="Test end timestamp")
     results: List[EndpointResult] = Field(default_factory=list, description="List of endpoint results")
     summary: Dict[str, Any] = Field(..., description="Test summary statistics")
+
+class RequirementField(BaseModel):
+    type: Literal["number", "boolean", "string", "select"] = Field(..., description="Type of the requirement field")
+    label: str = Field(..., description="Human-readable label for the field")
+    description: str = Field(..., description="Description of what this field does")
+    default_value: Any = Field(..., description="Default value for the field")
+    required: bool = Field(True, description="Whether this field is required")
+    options: Optional[List[str]] = Field(None, description="Options for select type")
+    min: Optional[float] = Field(None, description="Minimum value for number type")
+    max: Optional[float] = Field(None, description="Maximum value for number type")
+
+class EndpointRequirement(BaseModel):
+    type: Literal["percentage", "rate", "weight"] = Field(..., description="Type of endpoint-specific requirement")
+    description: str = Field(..., description="Description of the endpoint requirement")
+    must_total: Optional[int] = Field(None, description="Total value that all endpoints must sum to, if applicable")
+    default_distribution: Literal["even", "weighted", "custom"] = Field("even", description="Default distribution method")
+
+class StrategyRequirements(BaseModel):
+    name: str = Field(..., description="Display name of the strategy")
+    description: str = Field(..., description="Description of what the strategy does")
+    general_requirements: Dict[str, RequirementField] = Field(default_factory=dict, description="General requirements for the strategy")
+    endpoint_specific_requirements: bool = Field(False, description="Whether this strategy needs per-endpoint configuration")
+    endpoint_requirements: Optional[EndpointRequirement] = Field(None, description="Requirements for each endpoint, if needed")
+
+class DistributionRequirementsResponse(BaseModel):
+    strategies: Dict[str, StrategyRequirements] = Field(..., description="Requirements for each distribution strategy")
