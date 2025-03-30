@@ -96,6 +96,31 @@ export class ApiService {
       throw error;
     }
   }
+
+  /**
+   * Fetch available distribution strategies
+   * @returns Array of distribution strategy values
+   */
+  async fetchDistributionStrategies(): Promise<string[]> {
+    try {
+      const response = await fetch('/api/distribution-strategies', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to fetch distribution strategies');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching distribution strategies:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();
