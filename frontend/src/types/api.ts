@@ -27,11 +27,31 @@ export type EndpointSchema = {
   description?: string;
 };
 
+// Data generation strategy types
+export type DataGenerationStrategy = 'random_each_time' | 'consistent_random' | 'user_defined';
+
+// Type for endpoint test data sample
+export type EndpointTestDataSample = {
+  path_parameters?: Record<string, any>;
+  query_parameters?: Record<string, any>;
+  headers?: Record<string, any>;
+  body?: Record<string, any>;
+};
+
+// Response from the endpoint test data generation API
+export type EndpointTestDataResponse = {
+  endpoint_key: string;
+  data_samples: EndpointTestDataSample[];
+  timestamp: string;
+};
+
 export type StressTestEndpointConfig = {
   path: string;
   method: string;
   weight?: number;
   custom_parameters?: Record<string, any>;
+  data_strategy?: DataGenerationStrategy;
+  test_data_samples?: EndpointTestDataSample[];
 };
 
 export type DistributionStrategy = 'sequential' | 'interleaved' | 'random';

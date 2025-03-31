@@ -1,0 +1,11 @@
+fastapi>=0.110.1
+uvicorn>=0.29.0
+pydantic>=2.6.4
+email-validator>=2.1.0  # For EmailStr validation
+psutil>=5.9.0  # For system metrics
+pytest>=8.0.0  # For unit testing
+httpx>=0.27.0  # For async HTTP client in tests
+aiohttp>=3.9.0  # For load testing
+matplotlib>=3.8.0  # For plotting test results
+seaborn>=0.13.0  # For statistical data visualization
+pandas>=2.2.0  # For data analysis
