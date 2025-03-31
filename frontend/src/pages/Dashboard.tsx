@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Settings, LogOut, Play, RefreshCw, Link } from 'lucide-react';
+import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
 import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
 import { SessionSidebar, Session } from '../components/SessionSidebar';
 import apiService from '../services/ApiService';
-import { DistributionStrategy, StressTestConfig, StressTestEndpointConfig, EndpointSchema } from '../types/api';
+import { DistributionStrategy, StressTestConfig, DistributionRequirementsResponse, StressTestEndpointConfig, EndpointSchema } from '../types/api';
 import { EndpointsList } from '../components/endpoints/EndpointsList';
 
 // Define types for our state
@@ -44,6 +44,31 @@ export function Dashboard() {
   const [availableStrategies, setAvailableStrategies] = useState<string[]>([]);
   const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
   
+  // New state for strategy requirements
+  const [strategyRequirements, setStrategyRequirements] = useState<DistributionRequirementsResponse | null>(null);
+  const [isLoadingRequirements, setIsLoadingRequirements] = useState(false);
+  
+  // Show loading indicator when requirements are being fetched
+  const isLoading = isLoadingEndpoints || isLoadingStrategies || isLoadingRequirements;
+  
+  // Dynamic strategy options - will be populated based on requirements
+  const [strategyOptions, setStrategyOptions] = useState<Record<string, any>>({
+    sequential: { 
+      sequential_delay: 100, 
+      sequential_repeat: 1
+    },
+    interleaved: { 
+      endpoint_distribution: {} 
+    },
+    random: { 
+      random_seed: undefined, 
+      random_distribution_pattern: 'uniform' 
+    }
+  });
+  
+  // Advanced options toggle
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  
   // Session state
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   
@@ -55,7 +80,46 @@ export function Dashboard() {
   useEffect(() => {
     checkAuth();
     fetchDistributionStrategies();
+    fetchDistributionRequirements();
   }, []);
+
+  // Initialize default options when requirements change or distribution mode changes
+  useEffect(() => {
+    if (strategyRequirements && distributionMode) {
+      const requirements = strategyRequirements.strategies[distributionMode];
+      if (requirements) {
+        // Initialize default values for general requirements
+        const defaults: Record<string, any> = {};
+        
+        Object.entries(requirements.general_requirements).forEach(([key, field]) => {
+          defaults[key] = field.default_value;
+        });
+        
+        // For endpoint-specific requirements, initialize with even distribution if needed
+        if (requirements.endpoint_specific_requirements && 
+            requirements.endpoint_requirements?.type === 'percentage' &&
+            selectedEndpoints.length > 0) {
+          const evenValue = Math.floor(100 / selectedEndpoints.length);
+          const remainder = 100 % selectedEndpoints.length;
+          
+          const distribution = selectedEndpoints.reduce((acc, endpoint, index) => {
+            acc[endpoint] = evenValue + (index < remainder ? 1 : 0);
+            return acc;
+          }, {} as Record<string, number>);
+          
+          defaults.endpoint_distribution = distribution;
+        }
+        
+        setStrategyOptions(prevOptions => ({
+          ...prevOptions,
+          [distributionMode]: {
+            ...prevOptions[distributionMode],
+            ...defaults
+          }
+        }));
+      }
+    }
+  }, [strategyRequirements, distributionMode, selectedEndpoints]);
 
   const checkAuth = async () => {
     try {
@@ -83,6 +147,19 @@ export function Dashboard() {
       setAvailableStrategies(['sequential', 'interleaved', 'random']);
     } finally {
       setIsLoadingStrategies(false);
+    }
+  };
+
+  const fetchDistributionRequirements = async () => {
+    try {
+      setIsLoadingRequirements(true);
+      const requirements = await apiService.fetchDistributionRequirements();
+      setStrategyRequirements(requirements);
+    } catch (error) {
+      console.error('Error fetching distribution requirements:', error);
+      // Don't set fallback values here, as they would be complex to define
+    } finally {
+      setIsLoadingRequirements(false);
     }
   };
 
@@ -308,6 +385,34 @@ export function Dashboard() {
         use_random_session: false
       };
 
+      // Add strategy-specific options to the test config
+      if (showAdvancedOptions) {
+        testConfig.strategy_options = {};
+        
+        switch (distributionMode) {
+          case 'sequential':
+            testConfig.strategy_options.sequential = {
+              delay_between_requests_ms: strategyOptions[distributionMode].sequential_delay,
+              repeat_sequence: strategyOptions[distributionMode].sequential_repeat
+            };
+            break;
+          case 'interleaved':
+            testConfig.strategy_options.interleaved = {
+              endpoint_distribution: strategyOptions[distributionMode].endpoint_distribution
+            };
+            break;
+          case 'random':
+            testConfig.strategy_options.random = {
+              seed: strategyOptions[distributionMode].random_seed,
+              distribution_pattern: strategyOptions[distributionMode].random_distribution_pattern
+            };
+            break;
+          default:
+            console.error(`Unsupported distribution strategy: ${distributionMode}`);
+            return;
+        }
+      }
+
       // Call the actual API to start the stress test
       const response = await apiService.startStressTest(testConfig);
       setActiveTestId(response.test_id);
@@ -366,314 +471,590 @@ export function Dashboard() {
 
         {/* Main content area */}
         <main className="flex-1 overflow-y-auto p-6">
-          <div className="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 className="text-xl font-semibold mb-6">Configuration</h2>
-            
-            {/* FastAPI Base URL */}
-            <div className="mb-6">
-              <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 mb-1">
-                FastAPI Base URL
-              </label>
-              <div className="flex space-x-4">
-                <input
-                  id="baseUrl"
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.thebighalo.com"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+          {isLoading && (
+            <div className="flex justify-center items-center h-full">
+              <div className="flex flex-col items-center">
+                <RefreshCw className="h-10 w-10 text-indigo-600 animate-spin" />
+                <p className="mt-4 text-gray-600">Loading...</p>
               </div>
             </div>
-            
-            {/* Authentication Section */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <h3 className="text-lg font-medium text-gray-900">Authentication</h3>
-                  <button 
-                    onClick={() => setShowAuthConfig(!showAuthConfig)}
-                    className="ml-2 text-indigo-600 hover:text-indigo-800"
-                  >
-                    {showAuthConfig ? '(hide)' : '(show)'}
-                  </button>
-                </div>
-              </div>
-              
-              {showAuthConfig && (
-                <div className="mt-3 space-y-4">
-                  <div>
-                    <div className="flex justify-between">
-                      <label htmlFor="authConfig" className="block text-sm font-medium text-gray-700 mb-1">
-                        Authentication Headers (JSON)
-                      </label>
-                      {authError && <span className="text-sm text-red-600">{authError}</span>}
-                    </div>
-                    <textarea
-                      id="authConfig"
-                      value={authJson}
-                      onChange={(e) => {
-                        setAuthJson(e.target.value);
-                        validateAuthJson(e.target.value);
-                      }}
-                      placeholder='{"Authorization": "Bearer token123", "x-api-key": "your-api-key"}'
-                      rows={4}
-                      className={`w-full px-4 py-2 border ${
-                        authError ? 'border-red-500' : 'border-gray-300'
-                      } rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                    />
-                    <p className="mt-1 text-sm text-gray-500">
-                      Enter authentication headers in JSON format that will be included with requests
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Session Manager</h4>
-                    <div className="bg-green-100 border border-green-200 rounded-md p-3">
-                      <div className="text-sm text-green-800 font-medium">
-                        Status: Authenticated (11 active sessions)
-                      </div>
-                      <div className="mt-1 text-xs text-green-700 flex items-center">
-                        <span role="img" aria-label="key" className="mr-1">🔑</span>
-                        Active session: user-5f005403
-                      </div>
-                      <p className="mt-2 text-xs text-gray-600">
-                        The Session Manager tracks active API sessions and maintains authentication state for your stress tests.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Available Endpoints Section */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
-                <Button
-                  onClick={fetchEndpoints}
-                  disabled={isLoadingEndpoints || !baseUrl}
-                  className="flex items-center"
-                  size="sm"
-                >
-                  {isLoadingEndpoints ? (
-                    <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                  )}
-                  Fetch Endpoints
-                </Button>
-              </div>
-              
-              {endpoints.length > 0 && (
-                <>
-                  <div className="flex mb-2 items-center">
+          )}
+          
+          {!isLoading && (
+            <>
+              <div className="bg-white rounded-lg shadow p-6 mb-8">
+                <h2 className="text-xl font-semibold mb-6">Configuration</h2>
+                
+                {/* FastAPI Base URL */}
+                <div className="mb-6">
+                  <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                    FastAPI Base URL
+                  </label>
+                  <div className="flex space-x-4">
                     <input
+                      id="baseUrl"
                       type="text"
-                      value={endpointFilter}
-                      onChange={(e) => setEndpointFilter(e.target.value)}
-                      placeholder="Filter endpoints (path or method)"
-                      className="flex-1 px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      placeholder="https://api.thebighalo.com"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                    <div className="ml-4 space-x-2">
-                      <Button size="sm" onClick={handleSelectAllEndpoints}>
-                        Select All
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={handleClearSelection}>
-                        Clear Selection
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-3 border border-gray-200 rounded-md overflow-hidden">
-                    <div className="flex bg-gray-100 px-4 py-2 border-b border-gray-200">
-                      <div className="w-8"></div>
-                      <div className="w-16 text-xs font-medium text-gray-500">METHOD</div>
-                      <div className="flex-1 text-xs font-medium text-gray-500">ENDPOINT</div>
-                    </div>
-                    
-                    <div className="max-h-64 overflow-y-auto">
-                      {filteredEndpoints.length === 0 ? (
-                        <div className="px-4 py-3 text-sm text-gray-600">
-                          No endpoints match your filter
-                        </div>
-                      ) : (
-                        filteredEndpoints.map((endpoint, index) => {
-                          const endpointKey = `${endpoint.method} ${endpoint.path}`;
-                          const isSelected = selectedEndpoints.includes(endpointKey);
-                          
-                          return (
-                            <div 
-                              key={index}
-                              onClick={() => handleToggleEndpoint(endpoint)}
-                              className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
-                                index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
-                              }`}
-                            >
-                              <div className="w-8">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => {}}
-                                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                                />
-                              </div>
-                              <div className="w-16">
-                                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                                  endpoint.method === 'GET' 
-                                    ? 'bg-blue-100 text-blue-800' 
-                                    : 'bg-yellow-100 text-yellow-800'
-                                }`}>
-                                  {endpoint.method}
-                                </span>
-                              </div>
-                              <div className="flex-1 text-sm text-gray-700">
-                                {endpoint.path}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2 text-sm text-gray-500">
-                    Selected {selectedEndpoints.length} endpoints
-                  </div>
-                </>
-              )}
-              
-              {!endpoints.length && !isLoadingEndpoints && (
-                <div className="border border-gray-200 rounded-md p-8 flex flex-col items-center justify-center text-center">
-                  <Link className="h-12 w-12 text-gray-400 mb-2" />
-                  <h4 className="text-gray-900 font-medium mb-1">No Endpoints Available</h4>
-                  <p className="text-gray-500 text-sm mb-4">
-                    Enter a FastAPI base URL and click "Fetch Endpoints" to get started
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            {/* Data Generation Configuration Section - New Component */}
-            {selectedEndpoints.length > 0 && (
-              <EndpointsList
-                selectedEndpoints={selectedEndpoints}
-                endpointsData={endpoints}
-                onEndpointConfigChange={handleEndpointConfigChange}
-              />
-            )}
-            
-            {/* Test Configuration Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Test Configuration</h3>
-              
-              <div className="space-y-6">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700">
-                      Maximum Concurrent Requests
-                    </label>
-                    <span className="text-sm text-gray-500">{concurrentRequests}</span>
-                  </div>
-                  <input
-                    id="concurrentRequests"
-                    type="range"
-                    min="1"
-                    max="50"
-                    value={concurrentRequests}
-                    onChange={(e) => setConcurrentRequests(parseInt(e.target.value, 10))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>1</span>
-                    <span>50</span>
                   </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Distribution Strategy
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {isLoadingStrategies ? (
-                      <div className="col-span-3 py-4 text-center text-sm text-gray-500">
-                        Loading distribution strategies...
+                {/* Authentication Section */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <h3 className="text-lg font-medium text-gray-900">Authentication</h3>
+                      <button 
+                        onClick={() => setShowAuthConfig(!showAuthConfig)}
+                        className="ml-2 text-indigo-600 hover:text-indigo-800"
+                      >
+                        {showAuthConfig ? '(hide)' : '(show)'}
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {showAuthConfig && (
+                    <div className="mt-3 space-y-4">
+                      <div>
+                        <div className="flex justify-between">
+                          <label htmlFor="authConfig" className="block text-sm font-medium text-gray-700 mb-1">
+                            Authentication Headers (JSON)
+                          </label>
+                          {authError && <span className="text-sm text-red-600">{authError}</span>}
+                        </div>
+                        <textarea
+                          id="authConfig"
+                          value={authJson}
+                          onChange={(e) => {
+                            setAuthJson(e.target.value);
+                            validateAuthJson(e.target.value);
+                          }}
+                          placeholder='{"Authorization": "Bearer token123", "x-api-key": "your-api-key"}'
+                          rows={4}
+                          className={`w-full px-4 py-2 border ${
+                            authError ? 'border-red-500' : 'border-gray-300'
+                          } rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                        />
+                        <p className="mt-1 text-sm text-gray-500">
+                          Enter authentication headers in JSON format that will be included with requests
+                        </p>
                       </div>
-                    ) : availableStrategies.length === 0 ? (
-                      <div className="col-span-3 py-4 text-center text-sm text-gray-500">
-                        No distribution strategies available.
-                      </div>
-                    ) : (
-                      availableStrategies.map((strategy) => (
-                        <div
-                          key={strategy}
-                          onClick={() => setDistributionMode(strategy as DistributionStrategy)}
-                          className={`border ${
-                            distributionMode === strategy 
-                              ? 'border-indigo-500 bg-indigo-50' 
-                              : 'border-gray-200 hover:bg-gray-50'
-                          } rounded-lg p-3 cursor-pointer transition-colors`}
-                        >
-                          <div className="flex items-center mb-1">
-                            <input
-                              type="radio"
-                              checked={distributionMode === strategy}
-                              readOnly
-                              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-sm font-medium text-gray-900 ml-2">
-                              {strategy === 'sequential' && 'Sequential testing'}
-                              {strategy === 'interleaved' && 'Interleaved testing'}
-                              {strategy === 'random' && 'Random distribution'}
-                              {!['sequential', 'interleaved', 'random'].includes(strategy) && 
-                                strategy.charAt(0).toUpperCase() + strategy.slice(1)}
-                            </span>
+                      
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Session Manager</h4>
+                        <div className="bg-green-100 border border-green-200 rounded-md p-3">
+                          <div className="text-sm text-green-800 font-medium">
+                            Status: Authenticated (11 active sessions)
                           </div>
-                          <p className="text-xs text-gray-500">
-                            {strategy === 'sequential' && 'Requests are sent one after another in order'}
-                            {strategy === 'interleaved' && 'Requests are distributed evenly across endpoints'}
-                            {strategy === 'random' && 'Requests are sent randomly to selected endpoints'}
-                            {!['sequential', 'interleaved', 'random'].includes(strategy) && 
-                              `Custom distribution strategy: ${strategy}`}
+                          <div className="mt-1 text-xs text-green-700 flex items-center">
+                            <span role="img" aria-label="key" className="mr-1">🔑</span>
+                            Active session: user-5f005403
+                          </div>
+                          <p className="mt-2 text-xs text-gray-600">
+                            The Session Manager tracks active API sessions and maintains authentication state for your stress tests.
                           </p>
                         </div>
-                      ))
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Available Endpoints Section */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
+                    <Button
+                      onClick={fetchEndpoints}
+                      disabled={isLoadingEndpoints || !baseUrl}
+                      className="flex items-center"
+                      size="sm"
+                    >
+                      {isLoadingEndpoints ? (
+                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                      )}
+                      Fetch Endpoints
+                    </Button>
+                  </div>
+                  
+                  {endpoints.length > 0 && (
+                    <>
+                      <div className="flex mb-2 items-center">
+                        <input
+                          type="text"
+                          value={endpointFilter}
+                          onChange={(e) => setEndpointFilter(e.target.value)}
+                          placeholder="Filter endpoints (path or method)"
+                          className="flex-1 px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <div className="ml-4 space-x-2">
+                          <Button size="sm" onClick={handleSelectAllEndpoints}>
+                            Select All
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={handleClearSelection}>
+                            Clear Selection
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 border border-gray-200 rounded-md overflow-hidden">
+                        <div className="flex bg-gray-100 px-4 py-2 border-b border-gray-200">
+                          <div className="w-8"></div>
+                          <div className="w-16 text-xs font-medium text-gray-500">METHOD</div>
+                          <div className="flex-1 text-xs font-medium text-gray-500">ENDPOINT</div>
+                        </div>
+                        
+                        <div className="max-h-64 overflow-y-auto">
+                          {filteredEndpoints.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-600">
+                              No endpoints match your filter
+                            </div>
+                          ) : (
+                            filteredEndpoints.map((endpoint, index) => {
+                              const endpointKey = `${endpoint.method} ${endpoint.path}`;
+                              const isSelected = selectedEndpoints.includes(endpointKey);
+                              
+                              return (
+                                <div 
+                                  key={index}
+                                  onClick={() => handleToggleEndpoint(endpoint)}
+                                  className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
+                                    index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
+                                  }`}
+                                >
+                                  <div className="w-8">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                    />
+                                  </div>
+                                  <div className="w-16">
+                                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                                      endpoint.method === 'GET' 
+                                        ? 'bg-blue-100 text-blue-800' 
+                                        : 'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {endpoint.method}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1 text-sm text-gray-700">
+                                    {endpoint.path}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="mt-2 text-sm text-gray-500">
+                        Selected {selectedEndpoints.length} endpoints
+                      </div>
+                    </>
+                  )}
+                  
+                  {!endpoints.length && !isLoadingEndpoints && (
+                    <div className="border border-gray-200 rounded-md p-8 flex flex-col items-center justify-center text-center">
+                      <Link className="h-12 w-12 text-gray-400 mb-2" />
+                      <h4 className="text-gray-900 font-medium mb-1">No Endpoints Available</h4>
+                      <p className="text-gray-500 text-sm mb-4">
+                        Enter a FastAPI base URL and click "Fetch Endpoints" to get started
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Data Generation Configuration Section - New Component */}
+                {selectedEndpoints.length > 0 && (
+                  <EndpointsList
+                    selectedEndpoints={selectedEndpoints}
+                    endpointsData={endpoints}
+                    onEndpointConfigChange={handleEndpointConfigChange}
+                  />
+                )}
+                
+                {/* Test Configuration Section */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Test Configuration</h3>
+                  
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700">
+                          Maximum Concurrent Requests
+                        </label>
+                        <span className="text-sm text-gray-500">{concurrentRequests}</span>
+                      </div>
+                      <input
+                        id="concurrentRequests"
+                        type="range"
+                        min="1"
+                        max="50"
+                        value={concurrentRequests}
+                        onChange={(e) => setConcurrentRequests(parseInt(e.target.value, 10))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>1</span>
+                        <span>50</span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Distribution Strategy
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {isLoadingStrategies ? (
+                          <div className="col-span-3 py-4 text-center text-sm text-gray-500">
+                            Loading distribution strategies...
+                          </div>
+                        ) : availableStrategies.length === 0 ? (
+                          <div className="col-span-3 py-4 text-center text-sm text-gray-500">
+                            No distribution strategies available.
+                          </div>
+                        ) : (
+                          availableStrategies.map((strategy) => (
+                            <div
+                              key={strategy}
+                              onClick={() => setDistributionMode(strategy as DistributionStrategy)}
+                              className={`border ${
+                                distributionMode === strategy 
+                                  ? 'border-indigo-500 bg-indigo-50' 
+                                  : 'border-gray-200 hover:bg-gray-50'
+                              } rounded-lg p-3 cursor-pointer transition-colors`}
+                            >
+                              <div className="flex items-center mb-1">
+                                <input
+                                  type="radio"
+                                  checked={distributionMode === strategy}
+                                  readOnly
+                                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-sm font-medium text-gray-900 ml-2">
+                                  {strategy === 'sequential' && 'Sequential testing'}
+                                  {strategy === 'interleaved' && 'Interleaved testing'}
+                                  {strategy === 'random' && 'Random distribution'}
+                                  {!['sequential', 'interleaved', 'random'].includes(strategy) && 
+                                    strategy.charAt(0).toUpperCase() + strategy.slice(1)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {strategy === 'sequential' && 'Requests are sent one after another in order'}
+                                {strategy === 'interleaved' && 'Requests are distributed evenly across endpoints'}
+                                {strategy === 'random' && 'Requests are sent randomly to selected endpoints'}
+                                {!['sequential', 'interleaved', 'random'].includes(strategy) && 
+                                  `Custom distribution strategy: ${strategy}`}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Advanced options toggle */}
+                    <div className="flex items-center">
+                      <input
+                        id="showAdvancedOptions"
+                        type="checkbox"
+                        checked={showAdvancedOptions}
+                        onChange={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="showAdvancedOptions" className="ml-2 block text-sm text-gray-700">
+                        Show advanced distribution options
+                      </label>
+                    </div>
+                    
+                    {/* Strategy-specific options */}
+                    {showAdvancedOptions && distributionMode === 'sequential' && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Sequential Options</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Delay between requests (ms)
+                            </label>
+                            <input
+                              type="number"
+                              value={strategyOptions[distributionMode].sequential_delay}
+                              onChange={(e) => {
+                                setStrategyOptions(prevOptions => ({
+                                  ...prevOptions,
+                                  [distributionMode]: {
+                                    ...prevOptions[distributionMode],
+                                    sequential_delay: parseInt(e.target.value, 10)
+                                  }
+                                }));
+                              }}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Repeat count
+                            </label>
+                            <input
+                              type="number"
+                              value={strategyOptions[distributionMode].sequential_repeat}
+                              onChange={(e) => {
+                                setStrategyOptions(prevOptions => ({
+                                  ...prevOptions,
+                                  [distributionMode]: {
+                                    ...prevOptions[distributionMode],
+                                    sequential_repeat: parseInt(e.target.value, 10)
+                                  }
+                                }));
+                              }}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {showAdvancedOptions && distributionMode === 'interleaved' && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Endpoint Distribution</h4>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <p className="text-sm text-gray-700 mb-4">
+                            Set the percentage of requests for each endpoint. Total must equal 100%.
+                          </p>
+                          
+                          {selectedEndpoints.length > 0 && (
+                            <div className="space-y-4">
+                              {selectedEndpoints.map((endpoint, index) => {
+                                const currentValue = strategyOptions[distributionMode]?.endpoint_distribution[endpoint] || 
+                                  Math.floor(100 / selectedEndpoints.length);
+                                
+                                return (
+                                  <div key={index} className="flex items-center space-x-2">
+                                    <div className="w-32 flex-shrink-0">
+                                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                                        endpoint.split(' ')[0] === 'GET' 
+                                          ? 'bg-blue-100 text-blue-800' 
+                                          : 'bg-yellow-100 text-yellow-800'
+                                      }`}>
+                                        {endpoint.split(' ')[0]}
+                                      </span>
+                                    </div>
+                                    <div className="flex-grow text-sm truncate" title={endpoint.split(' ')[1]}>
+                                      {endpoint.split(' ')[1]}
+                                    </div>
+                                    <div className="flex items-center">
+                                      <button
+                                        onClick={() => {
+                                          const newValue = Math.max(0, currentValue - 1);
+                                          setStrategyOptions(prevOptions => ({
+                                            ...prevOptions,
+                                            [distributionMode]: {
+                                              ...prevOptions[distributionMode],
+                                              endpoint_distribution: {
+                                                ...prevOptions[distributionMode].endpoint_distribution,
+                                                [endpoint]: newValue
+                                              }
+                                            }
+                                          }));
+                                        }}
+                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
+                                      >
+                                        <Minus className="h-4 w-4" />
+                                      </button>
+                                      <input 
+                                        type="number"
+                                        value={currentValue}
+                                        onChange={(e) => {
+                                          const newValue = parseInt(e.target.value, 10);
+                                          if (!isNaN(newValue) && newValue >= 0) {
+                                            setStrategyOptions(prevOptions => ({
+                                              ...prevOptions,
+                                              [distributionMode]: {
+                                                ...prevOptions[distributionMode],
+                                                endpoint_distribution: {
+                                                  ...prevOptions[distributionMode].endpoint_distribution,
+                                                  [endpoint]: newValue
+                                                }
+                                              }
+                                            }));
+                                          }
+                                        }}
+                                        className="w-14 p-1 mx-1 text-center border border-gray-300 rounded-md"
+                                      />
+                                      <button
+                                        onClick={() => {
+                                          const newValue = currentValue + 1;
+                                          setStrategyOptions(prevOptions => ({
+                                            ...prevOptions,
+                                            [distributionMode]: {
+                                              ...prevOptions[distributionMode],
+                                              endpoint_distribution: {
+                                                ...prevOptions[distributionMode].endpoint_distribution,
+                                                [endpoint]: newValue
+                                              }
+                                            }
+                                          }));
+                                        }}
+                                        className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
+                                      >
+                                        <Plus className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              
+                              {/* Display total distribution percentage */}
+                              <div className="border-t border-gray-200 pt-3 mt-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm font-medium">Total distribution:</span>
+                                  <span className={`text-sm font-medium ${
+                                    Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
+                                      .map(Number)
+                                      .reduce((sum, val) => sum + val, 0) === 100
+                                      ? 'text-green-600'
+                                      : 'text-red-600'
+                                  }`}>
+                                    {Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
+                                      .map(Number)
+                                      .reduce((sum, val) => sum + val, 0)}% 
+                                    {Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
+                                      .map(Number)
+                                      .reduce((sum, val) => sum + val, 0) === 100 && 
+                                      <Check className="inline ml-1 h-4 w-4" />}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* Even distribution button */}
+                              <div className="mt-3">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    const evenValue = Math.floor(100 / selectedEndpoints.length);
+                                    const remainder = 100 % selectedEndpoints.length;
+                                    
+                                    const newDistribution = selectedEndpoints.reduce((acc, endpoint, index) => {
+                                      acc[endpoint] = evenValue + (index < remainder ? 1 : 0);
+                                      return acc;
+                                    }, {} as Record<string, number>);
+                                    
+                                    setStrategyOptions(prevOptions => ({
+                                      ...prevOptions,
+                                      [distributionMode]: {
+                                        ...prevOptions[distributionMode],
+                                        endpoint_distribution: newDistribution
+                                      }
+                                    }));
+                                  }}
+                                >
+                                  Set Even Distribution
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {selectedEndpoints.length === 0 && (
+                            <div className="text-center p-4">
+                              <p className="text-sm text-gray-500">
+                                Select endpoints to configure distribution percentages
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {showAdvancedOptions && distributionMode === 'random' && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Random Options</h4>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Seed (optional)
+                            </label>
+                            <input
+                              type="number"
+                              value={strategyOptions[distributionMode].random_seed || ''}
+                              onChange={(e) => {
+                                const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                                setStrategyOptions(prevOptions => ({
+                                  ...prevOptions,
+                                  [distributionMode]: {
+                                    ...prevOptions[distributionMode],
+                                    random_seed: value
+                                  }
+                                }));
+                              }}
+                              placeholder="Random seed for reproducibility"
+                              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Distribution pattern
+                            </label>
+                            <select
+                              value={strategyOptions[distributionMode].random_distribution_pattern}
+                              onChange={(e) => {
+                                setStrategyOptions(prevOptions => ({
+                                  ...prevOptions,
+                                  [distributionMode]: {
+                                    ...prevOptions[distributionMode],
+                                    random_distribution_pattern: e.target.value as 'uniform' | 'weighted' | 'gaussian'
+                                  }
+                                }));
+                              }}
+                              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="uniform">Uniform (equal probability)</option>
+                              <option value="weighted">Weighted (by endpoint weight)</option>
+                              <option value="gaussian">Gaussian (normal distribution)</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
+                
+                {/* Run Stress Test Button */}
+                <div className="flex justify-end">
+                  <Button
+                    onClick={startLoadTest}
+                    disabled={loading || selectedEndpoints.length === 0}
+                    className="flex items-center"
+                    size="lg"
+                  >
+                    <Play className="h-5 w-5 mr-2" />
+                    {loading ? 'Starting...' : 'START STRESS TEST'}
+                  </Button>
+                </div>
               </div>
-            </div>
-            
-            {/* Run Stress Test Button */}
-            <div className="flex justify-end">
-              <Button
-                onClick={startLoadTest}
-                disabled={loading || selectedEndpoints.length === 0}
-                className="flex items-center"
-                size="lg"
-              >
-                <Play className="h-5 w-5 mr-2" />
-                {loading ? 'Starting...' : 'START STRESS TEST'}
-              </Button>
-            </div>
-          </div>
 
-          {activeTestId ? (
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold">Live Metrics</h2>
-                <p className="text-sm text-gray-500">Test ID: {activeTestId}</p>
-              </div>
-              <MetricsPanel testId={activeTestId} />
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold">Example Visualization</h2>
-                <p className="text-sm text-gray-500">This is how your metrics will look during a load test</p>
-              </div>
-              <DemoMetricsPanel />
-            </div>
+              {activeTestId ? (
+                <div className="bg-white rounded-lg shadow">
+                  <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold">Live Metrics</h2>
+                    <p className="text-sm text-gray-500">Test ID: {activeTestId}</p>
+                  </div>
+                  <MetricsPanel testId={activeTestId} />
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow">
+                  <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold">Example Visualization</h2>
+                    <p className="text-sm text-gray-500">This is how your metrics will look during a load test</p>
+                  </div>
+                  <DemoMetricsPanel />
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>

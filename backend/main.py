@@ -36,6 +36,7 @@ from api_models import (
     StressTestProgressResponse,
     EndpointResult,
     DistributionStrategy,
+    DistributionRequirementsResponse,
     DataGenerationRequest,
     DataGenerationResponse,
     EndpointDataGenerationRequest,
@@ -104,6 +105,88 @@ app.add_middleware(
 
 # Initialize stress tester
 stress_tester = StressTester()
+
+# Distribution strategies requirements - can be moved to a separate file for better organization
+class RequirementField(BaseModel):
+    type: str
+    label: str
+    description: str
+    default_value: Any
+    min: Optional[int] = None
+    max: Optional[int] = None
+    required: bool = True
+
+class EndpointRequirement(BaseModel):
+    type: str
+    description: str
+    must_total: int
+    default_distribution: str
+
+class StrategyRequirements(BaseModel):
+    name: str
+    description: str
+    general_requirements: Dict[str, RequirementField]
+    endpoint_specific_requirements: bool
+    endpoint_requirements: Optional[EndpointRequirement] = None
+
+distribution_requirements = {
+    "sequential": StrategyRequirements(
+        name="Sequential Testing",
+        description="Requests are sent one after another in order",
+        general_requirements={
+            "delay_between_requests_ms": RequirementField(
+                type="number",
+                label="Delay between requests (ms)",
+                description="Time to wait between consecutive requests in milliseconds",
+                default_value=0,
+                min=0,
+                max=10000
+            ),
+            "repeat_sequence": RequirementField(
+                type="number",
+                label="Repeat count",
+                description="Number of times to repeat the sequence of endpoints",
+                default_value=1,
+                min=1,
+                max=100
+            )
+        },
+        endpoint_specific_requirements=False
+    ),
+    "interleaved": StrategyRequirements(
+        name="Interleaved Testing",
+        description="Requests are distributed evenly across endpoints",
+        general_requirements={},
+        endpoint_specific_requirements=True,
+        endpoint_requirements=EndpointRequirement(
+            type="percentage",
+            description="Set the percentage of requests for each endpoint. Total must equal 100%.",
+            must_total=100,
+            default_distribution="even"
+        )
+    ),
+    "random": StrategyRequirements(
+        name="Random Distribution",
+        description="Requests are sent randomly to selected endpoints",
+        general_requirements={
+            "seed": RequirementField(
+                type="number",
+                label="Seed",
+                description="Random seed for reproducibility (optional)",
+                default_value=None,
+                required=False
+            ),
+            "distribution_pattern": RequirementField(
+                type="select",
+                label="Distribution pattern",
+                description="Pattern to use for distributing requests",
+                default_value="uniform",
+                options=["uniform", "weighted", "gaussian"]
+            )
+        },
+        endpoint_specific_requirements=False
+    )
+}
 
 # Health check endpoint
 @app.get("/health", response_model=HealthResponse)
@@ -505,7 +588,7 @@ async def stop_advanced_test(test_id: str):
         )
 
 # Endpoint to get available distribution strategies
-@app.get("/api/distribution-strategies")
+@app.get("/api/distribution-strategies", response_model=List[str])
 async def get_distribution_strategies():
     """
     Returns all available distribution strategies for stress testing.
@@ -514,6 +597,20 @@ async def get_distribution_strategies():
         List[DistributionStrategy]: A list of all available distribution strategies.
     """
     return [strategy.value for strategy in DistributionStrategy]
+
+# Endpoint to get distribution strategy requirements
+@app.get("/api/distribution-requirements", response_model=DistributionRequirementsResponse)
+async def get_distribution_requirements():
+    """
+    Returns detailed requirements for each distribution strategy.
+    
+    These requirements define what configuration options are available for each strategy,
+    including both general strategy options and endpoint-specific requirements.
+    
+    Returns:
+        DistributionRequirementsResponse: Requirements for all available distribution strategies.
+    """
+    return DistributionRequirementsResponse(strategies=distribution_requirements)
 
 @app.websocket("/ws/metrics/{test_id}")
 async def metrics_websocket(websocket: WebSocket, test_id: str):
