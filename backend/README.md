@@ -70,6 +70,47 @@ Once the server is running, you can access the automatic API documentation at:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+## Local Database Management
+
+The application uses SQLite for storing user sessions and test configurations. The database file is located at `data/stress_api.db`. Several utility scripts are provided in the `database` directory to help manage the database:
+
+### Reset Database
+
+To drop all tables and recreate the database schema:
+
+```bash
+cd database
+python reset_database.py
+```
+
+### Seed Database with Example Data
+
+To populate the database with example users, sessions, and test configurations:
+
+```bash
+cd database
+python seed_database.py
+```
+
+This will create:
+- 3 example users with different email addresses
+- 5 test sessions distributed among these users
+- 7 test configurations with various parameters
+
+### Display Database Contents
+
+To view all entries in the database in a formatted table:
+
+```bash
+cd database
+python display_database.py
+```
+
+This will show:
+- All users with their IDs and email addresses
+- All sessions with their metadata and relationships to users
+- All configurations with their test parameters and relationships to sessions
+
 ## API Endpoints
 
 ### Basic Endpoints

@@ -99,22 +99,17 @@ export class ApiService {
 
   /**
    * Fetch available distribution strategies
-   * @returns Array of distribution strategy values
+   * @returns Array of distribution strategies
    */
-  async fetchDistributionStrategies(): Promise<string[]> {
+  async fetchDistributionStrategies() {
     try {
-      const response = await fetch('/api/distribution-strategies', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
+      const response = await fetch('/api/distribution-strategies');
+      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to fetch distribution strategies');
       }
-
+      
       return await response.json();
     } catch (error) {
       console.error('Error fetching distribution strategies:', error);
@@ -122,25 +117,19 @@ export class ApiService {
     }
   }
 
-  
   /**
    * Fetch distribution requirements for all strategies
    * @returns Map of strategy requirements
    */
-  async fetchDistributionRequirements(): Promise<any> {
+  async fetchDistributionRequirements() {
     try {
-      const response = await fetch('/api/distribution-requirements', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
+      const response = await fetch('/api/distribution-requirements');
+      
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to fetch distribution requirements');
       }
-
+      
       return await response.json();
     } catch (error) {
       console.error('Error fetching distribution requirements:', error);
@@ -149,28 +138,18 @@ export class ApiService {
   }
 
   /**
-   * Generate test data for a specific endpoint
-   * @param endpointKey The endpoint key in format "METHOD path"
-   * @param endpointSchema The schema of the endpoint
-   * @param sampleCount Number of samples to generate
-   * @returns Generated test data samples
+   * Generate test data for an endpoint
+   * @param endpoint The endpoint to generate data for
+   * @returns Generated test data
    */
-  async generateEndpointTestData(
-    endpointKey: string,
-    endpointSchema: EndpointSchema,
-    sampleCount: number = 1
-  ) {
+  async generateTestData(endpoint: EndpointSchema) {
     try {
-      const response = await fetch('/api/endpoint-test-data', {
+      const response = await fetch('/api/generate-sample-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          endpoint_key: endpointKey,
-          endpoint_schema: endpointSchema,
-          sample_count: sampleCount
-        }),
+        body: JSON.stringify(endpoint),
       });
 
       if (!response.ok) {
@@ -180,7 +159,66 @@ export class ApiService {
 
       return await response.json();
     } catch (error) {
-      console.error('Error generating endpoint test data:', error);
+      console.error('Error generating test data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch user sessions and their configurations
+   * @param email The email of the user
+   * @returns User sessions data
+   */
+  async fetchUserSessions(email: string) {
+    try {
+      const response = await fetch(`http://localhost:8000/api/user/${encodeURIComponent(email)}/sessions`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching user sessions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new session configuration
+   * @param config The session configuration data
+   * @param userEmail The email of the user to associate the session with
+   * @returns Created session configuration
+   */
+  async createSessionConfiguration(config: any, userEmail: string) {
+    try {
+      const response = await fetch(`http://localhost:8000/api/sessions/configuration?user_email=${encodeURIComponent(userEmail)}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(config),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create session configuration');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating session configuration:', error);
       throw error;
     }
   }

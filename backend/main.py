@@ -46,6 +46,9 @@ from api_models import (
     EndpointTestDataResponse
 )
 from metrics_generator import metrics_manager
+from database.database import get_db
+from database.crud import get_user_by_email, get_user_sessions as get_db_user_sessions, get_session_configs, create_session, create_session_config, get_session
+from sqlalchemy.orm import Session
 
 # Session configuration models
 class SessionConfigModel(BaseModel):
@@ -769,129 +772,159 @@ async def get_test_summary(test_id: str):
 
 # Endpoint 1: Get all sessions and configurations for a user
 @app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
-async def get_user_sessions(email: str):
+async def get_user_sessions(email: str, db: Session = Depends(get_db)):
     """
     Retrieve configuration info for all sessions associated with a specific user.
-    This endpoint currently uses mock data that returns three sessions with the TestConfigRequest schema.
+    This endpoint queries the database for user sessions and their configurations.
     """
     try:
-        # Generate mock user ID
-        user_id = email
+        # Get user by email
+        user = get_user_by_email(db, email)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with email {email} not found")
         
-        # Create three mock sessions with configurations
+        # Get all sessions for the user
+        db_sessions = get_db_user_sessions(db, user.id)
+        
+        # Convert database sessions to API response model
         sessions = []
-        
-        # Target URLs as specified
-        target_urls = [
-            "https://www.google.com",
-            "https://www.amazon.com",
-            "https://www.barnesandnoble.com"
-        ]
-        
-        # Distribution strategies
-        distribution_strategies = ["sequential", "interleaved", "random"]
-        
-        for i in range(1, 4):
-            # Use the URL as the session ID instead of UUID
-            session_id = target_urls[i-1]
+        for db_session in db_sessions:
+            # Get configurations for this session
+            db_configs = get_session_configs(db, db_session.id)
             
-            # Create mock configurations for each session
+            # Convert database configurations to API response model
             configurations = []
-            
-            # Use the endpoint URL as the identifier instead of UUID
-            config_id = target_urls[i-1]
-            
-            # Create different concurrent requests for variety
-            concurrent_requests = 10 * i
-            
-            # Create mock endpoint configurations as specified in the schema
-            endpoint_paths = [f"/api/resource{i}", f"/api/resource{i}/create"]
-            endpoints = [f"GET {endpoint_paths[0]}", f"POST {endpoint_paths[1]}"]
-            
-            # Create mock headers
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer token-{i}"
-            }
-            
-            # Create a TestConfigRequest object for the success_criteria
-            test_config = TestConfigRequest(
-                target_url=target_urls[i-1],
-                concurrent_users=concurrent_requests,
-                request_rate=10,  # Default value as specified
-                duration=60,      # Default value as specified
-                endpoints=endpoints,
-                headers=headers,
-                payload_data={"test": f"data{i}"}
-            )
-            
-            # Create a configuration that uses TestConfigRequest
-            configurations.append(
-                SessionConfigModel(
-                    id=config_id,
-                    session_id=session_id,
-                    endpoint_url=target_urls[i-1],
-                    http_method="GET",
-                    request_headers=headers,
-                    request_body={"test": f"data{i}"},
-                    request_params={"param1": f"value{i}"},
-                    concurrent_users=concurrent_requests,
-                    ramp_up_time=5,
-                    test_duration=60,
-                    think_time=1,
-                    success_criteria=test_config.dict()
+            for db_config in db_configs:
+                config = SessionConfigModel(
+                    id=str(db_config.id),
+                    session_id=str(db_config.session_id),
+                    endpoint_url=db_config.endpoint_url,
+                    http_method=db_config.http_method,
+                    request_headers=db_config.request_headers,
+                    request_body=db_config.request_body,
+                    request_params=db_config.request_params,
+                    concurrent_users=db_config.concurrent_users,
+                    ramp_up_time=db_config.ramp_up_time,
+                    test_duration=db_config.test_duration,
+                    think_time=db_config.think_time,
+                    success_criteria=db_config.success_criteria
                 )
-            )
+                configurations.append(config)
             
-            # Create mock session with configurations
-            sessions.append(
-                SessionModel(
-                    id=session_id,
-                    name=f"Test Session {i}",
-                    description=f"Test session for {target_urls[i-1]}",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
-                    configurations=configurations
-                )
+            # Create session model with configurations
+            session = SessionModel(
+                id=str(db_session.id),
+                name=db_session.name,
+                description=db_session.description,
+                created_at=db_session.created_at,
+                updated_at=db_session.updated_at,
+                configurations=configurations
             )
+            sessions.append(session)
         
-        # Return mock user response with sessions
+        # Return user response with sessions
         return UserSessionsResponse(
-            user_id=email,
-            email=email,
+            user_id=str(user.id),
+            email=user.email,
             sessions=sessions
         )
+    except HTTPException as he:
+        # Re-raise HTTP exceptions
+        raise he
     except Exception as e:
         # Log the error for debugging
-        print(f"Error in get_user_sessions: {str(e)}")
-        # Re-raise the exception to let FastAPI handle it
+        logger.error(f"Error in get_user_sessions: {str(e)}")
+        # Raise an HTTP exception
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 # Endpoint 2: Create a new session configuration
 @app.post("/api/sessions/configuration", response_model=SessionConfigModel)
-async def create_session_configuration(config: SessionConfigRequest):
+async def create_session_configuration(config: SessionConfigRequest, user_email: str, db: Session = Depends(get_db)):
     """
-    Publish configuration info into the database.
-    This endpoint currently uses mock data and returns the created configuration with a generated ID.
-    """
-    # Generate mock configuration ID
-    config_id = str(uuid.uuid4())
+    Create a new session configuration for a user and store it in the database.
     
-    # Return mock configuration with the provided values
-    return SessionConfigModel(
-        id=config_id,
-        session_id=config.session_id,
-        endpoint_url=config.endpoint_url,
-        http_method=config.http_method,
-        request_headers=config.request_headers,
-        request_body=config.request_body,
-        request_params=config.request_params,
-        concurrent_users=config.concurrent_users,
-        ramp_up_time=config.ramp_up_time,
-        test_duration=config.test_duration,
-        think_time=config.think_time,
-        success_criteria=config.success_criteria
-    )
+    This endpoint:
+    1. Finds the user by email
+    2. Creates a new session if session_id is not provided
+    3. Creates a session configuration linked to the session
+    
+    Returns the created configuration with a generated ID.
+    """
+    try:
+        # Find the user by email
+        user = get_user_by_email(db, user_email)
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User with email {user_email} not found")
+        
+        # Check if session exists or create a new one
+        session = None
+        if config.session_id and config.session_id != "new":
+            # Try to get the existing session
+            try:
+                session_uuid = uuid.UUID(config.session_id)
+                session = get_session(db, session_uuid)
+                
+                # Verify the session belongs to the user
+                if session and str(session.user_id) != str(user.id):
+                    raise HTTPException(
+                        status_code=403, 
+                        detail="Session does not belong to the specified user"
+                    )
+            except ValueError:
+                # Invalid UUID format
+                raise HTTPException(status_code=400, detail="Invalid session ID format")
+        
+        # Create a new session if needed
+        if not session:
+            # Generate a default session name if not provided
+            session_name = f"Test Session {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            session_description = f"Configuration for {config.endpoint_url}"
+            
+            # Create the session
+            session = create_session(db, user.id, session_name, session_description)
+            logger.info(f"Created new session {session.id} for user {user_email}")
+        
+        # Create the session configuration
+        session_config = create_session_config(
+            db=db,
+            session_id=session.id,
+            endpoint_url=config.endpoint_url,
+            http_method=config.http_method,
+            request_headers=config.request_headers,
+            request_body=config.request_body,
+            request_params=config.request_params,
+            concurrent_users=config.concurrent_users,
+            ramp_up_time=config.ramp_up_time,
+            test_duration=config.test_duration,
+            think_time=config.think_time,
+            success_criteria=config.success_criteria
+        )
+        
+        # Return the created configuration
+        return SessionConfigModel(
+            id=str(session_config.id),
+            session_id=str(session_config.session_id),
+            endpoint_url=session_config.endpoint_url,
+            http_method=session_config.http_method,
+            request_headers=session_config.request_headers,
+            request_body=session_config.request_body,
+            request_params=session_config.request_params,
+            concurrent_users=session_config.concurrent_users,
+            ramp_up_time=session_config.ramp_up_time,
+            test_duration=session_config.test_duration,
+            think_time=session_config.think_time,
+            success_criteria=session_config.success_criteria
+        )
+    except HTTPException as he:
+        # Re-raise HTTP exceptions
+        raise he
+    except Exception as e:
+        # Log the error for debugging
+        logger.error(f"Error in create_session_configuration: {str(e)}")
+        # Rollback the transaction in case of error
+        db.rollback()
+        # Raise an HTTP exception
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 # Endpoint to generate data based on schema
 @app.post("/api/generate-data", response_model=DataGenerationResponse)
