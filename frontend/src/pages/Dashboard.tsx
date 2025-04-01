@@ -7,7 +7,7 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { DemoMetricsPanel } from '../components/DemoMetricsPanel';
 import { SessionSidebar, Session } from '../components/SessionSidebar';
 import apiService from '../services/ApiService';
-import { DistributionStrategy, StressTestConfig, DistributionRequirementsResponse, StressTestEndpointConfig, EndpointSchema } from '../types/api';
+import { DistributionStrategy, StressTestConfig, DistributionRequirementsResponse, StressTestEndpointConfig } from '../types/api';
 import { EndpointsList } from '../components/endpoints/EndpointsList';
 
 // Define types for our state
@@ -72,6 +72,9 @@ export function Dashboard() {
   // Session state
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   
+  // User state
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  
   // New state for endpoint configurations
   const [endpointConfigs, setEndpointConfigs] = useState<Record<string, StressTestEndpointConfig>>({});
   
@@ -126,6 +129,9 @@ export function Dashboard() {
       const user = await getCurrentUser();
       if (!user) {
         navigate('/login');
+      } else {
+        // Store the user's email
+        setCurrentUserEmail(user.email || null);
       }
     } catch (error) {
       navigate('/login');
@@ -467,6 +473,7 @@ export function Dashboard() {
         <SessionSidebar 
           onSessionSelect={handleSessionSelect}
           selectedSessionId={selectedSession?.id}
+          userEmail={currentUserEmail}
         />
 
         {/* Main content area */}

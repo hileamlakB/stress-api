@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, Folder } from 'lucide-react';
+import ApiService from '../services/ApiService';
 
 // Define types for session data
 export interface SessionConfig {
@@ -35,11 +36,13 @@ export interface UserSessions {
 interface SessionSidebarProps {
   onSessionSelect: (session: Session) => void;
   selectedSessionId?: string;
+  userEmail?: string | null;
 }
 
 export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   onSessionSelect,
-  selectedSessionId
+  selectedSessionId,
+  userEmail
 }) => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,36 +54,13 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         setLoading(true);
         setError(null); // Clear any previous errors
         
-        // Use the email that matches what the backend expects
-        const email = 'jlin9811@gmail.com';
+        // Use the provided userEmail or fall back to a default
+        const email = userEmail || 'user1@example.com';
         
         console.log('Fetching sessions for email:', email);
         
-        // Use the full URL with the backend server address for direct access
-        const url = `http://localhost:8000/api/user/${encodeURIComponent(email)}/sessions`;
-        console.log('Fetching from URL:', url);
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          // Use 'same-origin' for credentials to avoid CORS issues
-          credentials: 'same-origin',
-          // Ensure we're using the latest data
-          cache: 'no-cache',
-        });
-        
-        console.log('Response status:', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Error response body:', errorText);
-          throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`);
-        }
-        
-        const data: UserSessions = await response.json();
+        // Use the ApiService to fetch user sessions
+        const data = await ApiService.fetchUserSessions(email);
         console.log('Fetched sessions:', data);
         
         if (data && Array.isArray(data.sessions)) {
@@ -103,7 +83,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     };
 
     fetchSessions();
-  }, [onSessionSelect, selectedSessionId]);
+  }, [onSessionSelect, selectedSessionId, userEmail]);
 
   return (
     <div className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shadow-sm">
