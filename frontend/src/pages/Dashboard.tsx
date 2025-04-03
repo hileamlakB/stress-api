@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -43,6 +43,11 @@ export function Dashboard() {
   const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
   const [endpointFilter, setEndpointFilter] = useState('');
   const [isLoadingEndpoints, setIsLoadingEndpoints] = useState(false);
+  
+  // New endpoint filtering and organization state
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [filterByMethod, setFilterByMethod] = useState<string>('all');
+  const [advancedFiltering, setAdvancedFiltering] = useState(false);
   
   // Test configuration state
   const [concurrentRequests, setConcurrentRequests] = useState(10);
@@ -340,13 +345,66 @@ export function Dashboard() {
     }
   };
 
-  const filteredEndpoints = endpoints.filter(endpoint => {
-    const searchTerm = endpointFilter.toLowerCase();
-    return (
-      endpoint.method.toLowerCase().includes(searchTerm) ||
-      endpoint.path.toLowerCase().includes(searchTerm)
-    );
-  });
+  // Group endpoints into tabs based on URL patterns
+  const endpointGroups = useMemo(() => {
+    // Start with the "all" group
+    const groups: Record<string, Endpoint[]> = { all: endpoints };
+    
+    // Group endpoints by the first part of the path
+    endpoints.forEach(endpoint => {
+      // Extract the first segment of the path after removing leading slash
+      const pathSegments = endpoint.path.split('/').filter(Boolean);
+      const firstSegment = pathSegments.length > 0 ? pathSegments[0] : 'root';
+      
+      // Add to the group
+      if (!groups[firstSegment]) {
+        groups[firstSegment] = [];
+      }
+      groups[firstSegment].push(endpoint);
+    });
+    
+    return groups;
+  }, [endpoints]);
+  
+  // Available tabs derived from endpoint groups
+  const availableTabs = useMemo(() => {
+    return ['all', ...Object.keys(endpointGroups).filter(group => group !== 'all')];
+  }, [endpointGroups]);
+
+  // Filter endpoints based on active tab, filter text, and method filter
+  const filteredEndpoints = useMemo(() => {
+    let filtered = endpoints;
+    
+    // Filter by tab group if not "all"
+    if (activeTab !== 'all') {
+      filtered = endpointGroups[activeTab] || [];
+    }
+    
+    // Filter by method if not "all"
+    if (filterByMethod !== 'all') {
+      filtered = filtered.filter(ep => ep.method === filterByMethod);
+    }
+    
+    // Text filter on path or method
+    if (endpointFilter) {
+      const lowerFilter = endpointFilter.toLowerCase();
+      filtered = filtered.filter(ep => 
+        ep.path.toLowerCase().includes(lowerFilter) || 
+        ep.method.toLowerCase().includes(lowerFilter) ||
+        (ep.description && ep.description.toLowerCase().includes(lowerFilter)) ||
+        (ep.summary && ep.summary.toLowerCase().includes(lowerFilter))
+      );
+    }
+    
+    return filtered;
+  }, [endpoints, endpointGroups, activeTab, filterByMethod, endpointFilter]);
+
+  // Get unique methods from endpoints for the method filter dropdown
+  const availableMethods = useMemo(() => {
+    const methods = new Set<string>();
+    endpoints.forEach(ep => methods.add(ep.method));
+    return ['all', ...Array.from(methods)];
+  }, [endpoints]);
 
   const startLoadTest = async () => {
     if (!baseUrl) {
@@ -628,29 +686,95 @@ export function Dashboard() {
                     </p>
                     {endpoints.length > 0 && (
                       <>
-                        <div className="flex mb-2 items-center">
-                          <input
-                            type="text"
-                            value={endpointFilter}
-                            onChange={(e) => setEndpointFilter(e.target.value)}
-                            placeholder="Filter endpoints (path or method)"
-                            className="flex-1 px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                          <div className="ml-4 space-x-2">
-                            <Button size="sm" onClick={handleSelectAllEndpoints}>
-                              Select All
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={handleClearSelection}>
-                              Clear Selection
-                            </Button>
+                        <div className="flex flex-col mb-4">
+                          {/* Filtering controls */}
+                          <div className="flex mb-2 items-center">
+                            <div className="relative flex-1">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Filter className="h-4 w-4 text-gray-400" />
+                              </div>
+                              <input
+                                type="text"
+                                value={endpointFilter}
+                                onChange={(e) => setEndpointFilter(e.target.value)}
+                                placeholder="Filter endpoints (path, method, description)"
+                                className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div className="ml-4 space-x-2">
+                              <Button size="sm" onClick={handleSelectAllEndpoints}>
+                                Select All
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={handleClearSelection}>
+                                Clear Selection
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => setAdvancedFiltering(!advancedFiltering)}
+                                className="flex items-center"
+                              >
+                                <Filter className="h-4 w-4 mr-1" />
+                                {advancedFiltering ? 'Hide Filters' : 'More Filters'}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Advanced filtering options */}
+                          {advancedFiltering && (
+                            <div className="flex items-center mt-2 mb-2 space-x-4">
+                              <div className="flex items-center">
+                                <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 mr-2">
+                                  Method:
+                                </label>
+                                <select
+                                  id="methodFilter"
+                                  value={filterByMethod}
+                                  onChange={(e) => setFilterByMethod(e.target.value)}
+                                  className="text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1 px-2"
+                                >
+                                  {availableMethods.map(method => (
+                                    <option key={method} value={method}>
+                                      {method === 'all' ? 'All Methods' : method}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="flex items-center ml-4">
+                                <span className="text-sm text-gray-500">
+                                  Found {filteredEndpoints.length} of {endpoints.length} endpoints
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Endpoint grouping tabs */}
+                          <div className="flex overflow-x-auto space-x-1 pt-3 pb-2 border-b border-gray-200">
+                            {availableTabs.map(tab => (
+                              <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${
+                                  activeTab === tab
+                                    ? 'bg-indigo-100 text-indigo-700'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                }`}
+                              >
+                                {tab === 'all' ? 'All Endpoints' : `/${tab}`}
+                                <span className="ml-1 text-xs text-gray-500">
+                                  ({tab === 'all' ? endpoints.length : (endpointGroups[tab]?.length || 0)})
+                                </span>
+                              </button>
+                            ))}
                           </div>
                         </div>
-                        
+
                         <div className="mt-3 border border-gray-200 rounded-md overflow-hidden">
                           <div className="flex bg-gray-100 px-4 py-2 border-b border-gray-200">
                             <div className="w-8"></div>
                             <div className="w-16 text-xs font-medium text-gray-500">METHOD</div>
                             <div className="flex-1 text-xs font-medium text-gray-500">ENDPOINT</div>
+                            <div className="w-24 text-xs font-medium text-gray-500">DETAILS</div>
                           </div>
                           
                           <div className="max-h-64 overflow-y-auto">
@@ -683,13 +807,22 @@ export function Dashboard() {
                                       <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                                         endpoint.method === 'GET' 
                                           ? 'bg-blue-100 text-blue-800' 
-                                          : 'bg-yellow-100 text-yellow-800'
+                                          : endpoint.method === 'POST'
+                                          ? 'bg-green-100 text-green-800'
+                                          : endpoint.method === 'PUT'
+                                          ? 'bg-yellow-100 text-yellow-800'
+                                          : endpoint.method === 'DELETE'
+                                          ? 'bg-red-100 text-red-800'
+                                          : 'bg-gray-100 text-gray-800'
                                       }`}>
                                         {endpoint.method}
                                       </span>
                                     </div>
                                     <div className="flex-1 text-sm text-gray-700">
                                       {endpoint.path}
+                                    </div>
+                                    <div className="w-24 text-xs text-gray-500 truncate">
+                                      {endpoint.summary || endpoint.description || '-'}
                                     </div>
                                   </div>
                                 );
