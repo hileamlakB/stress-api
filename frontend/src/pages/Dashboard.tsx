@@ -496,102 +496,91 @@ export function Dashboard() {
           {!isLoading && (
             <>
               <div className="bg-white rounded-lg shadow mb-8">
-                {/* Configuration Section Header */}
+                {/* API Configuration Section Header */}
                 <div 
                   className="p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
                   onClick={() => setConfigSectionExpanded(!configSectionExpanded)}
                 >
-                  <h2 className="text-xl font-semibold">Configuration</h2>
+                  <h3 className="text-lg font-medium text-gray-900">API Configuration</h3>
                   <div className="text-gray-500">
                     {configSectionExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                   </div>
                 </div>
                 
-                {/* Configuration Section Content */}
                 <div 
                   className={`overflow-hidden transition-all duration-300 ease-in-out ${
                     configSectionExpanded ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'
                   }`}
                 >
                   <div className="p-6">
-                    {/* FastAPI Base URL */}
-                    <div className="mb-6">
-                      <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 mb-1">
-                        FastAPI Base URL
-                      </label>
-                      <div className="flex space-x-4">
-                        <input
-                          id="baseUrl"
-                          type="text"
-                          value={baseUrl}
-                          onChange={(e) => setBaseUrl(e.target.value)}
-                          placeholder="https://api.thebighalo.com"
-                          className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Authentication Section */}
-                    <div className="mb-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <h3 className="text-lg font-medium text-gray-900">Authentication</h3>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowAuthConfig(!showAuthConfig);
-                            }}
-                            className="ml-2 text-indigo-600 hover:text-indigo-800"
-                          >
-                            {showAuthConfig ? '(hide)' : '(show)'}
-                          </button>
+                    {/* Add instructional text */}
+                    <p className="text-sm text-gray-600 mb-4">
+                      Start by entering the base URL of your FastAPI application. This should include the protocol (http/https), domain, and port if needed.
+                    </p>
+                    <div className="space-y-6">
+                      <div>
+                        <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                          API Base URL
+                        </label>
+                        <div className="flex">
+                          <input
+                            id="baseUrl"
+                            type="text"
+                            value={baseUrl}
+                            onChange={(e) => setBaseUrl(e.target.value)}
+                            placeholder="https://your-api.com"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
                         </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Example: http://localhost:8000 or https://api.example.com
+                        </p>
                       </div>
                       
-                      {showAuthConfig && (
-                        <div className="mt-3 space-y-4">
-                        <div>
-                          <div className="flex justify-between">
-                            <label htmlFor="authConfig" className="block text-sm font-medium text-gray-700 mb-1">
-                              Authentication Headers (JSON)
-                            </label>
-                            {authError && <span className="text-sm text-red-600">{authError}</span>}
-                          </div>
-                          <textarea
-                            id="authConfig"
-                            value={authJson}
-                            onChange={(e) => {
-                              setAuthJson(e.target.value);
-                              validateAuthJson(e.target.value);
-                            }}
-                            placeholder='{"Authorization": "Bearer token123", "x-api-key": "your-api-key"}'
-                            rows={4}
-                            className={`w-full px-4 py-2 border ${
-                              authError ? 'border-red-500' : 'border-gray-300'
-                            } rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                          />
-                          <p className="mt-1 text-sm text-gray-500">
-                            Enter authentication headers in JSON format that will be included with requests
-                          </p>
+                      <div>
+                        <div className="flex items-center">
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowAuthConfig(!showAuthConfig)}
+                            className="flex items-center"
+                          >
+                            <Settings className="h-4 w-4 mr-1" />
+                            {showAuthConfig ? 'Hide Authentication' : 'Configure Authentication'}
+                          </Button>
                         </div>
                         
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Session Manager</h4>
-                          <div className="bg-green-100 border border-green-200 rounded-md p-3">
-                            <div className="text-sm text-green-800 font-medium">
-                              Status: Authenticated (11 active sessions)
-                            </div>
-                            <div className="mt-1 text-xs text-green-700 flex items-center">
-                              <span role="img" aria-label="key" className="mr-1">🔑</span>
-                              Active session: user-5f005403
-                            </div>
-                            <p className="mt-2 text-xs text-gray-600">
-                              The Session Manager tracks active API sessions and maintains authentication state for your stress tests.
+                        {showAuthConfig && (
+                          <div className="mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
+                            {/* Add instructional text */}
+                            <p className="text-sm text-gray-600 mb-3">
+                              Specify authentication headers as a JSON object. These will be included with every request during load testing.
+                            </p>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Authentication Headers (JSON)
+                            </label>
+                            <textarea
+                              value={authJson}
+                              onChange={(e) => {
+                                setAuthJson(e.target.value);
+                                validateAuthJson(e.target.value);
+                              }}
+                              rows={5}
+                              placeholder='{"Authorization": "Bearer YOUR_TOKEN_HERE"}'
+                              className={`w-full px-4 py-2 border ${
+                                authError ? 'border-red-300' : 'border-gray-300'
+                              } rounded-md focus:outline-none focus:ring-2 ${
+                                authError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
+                              }`}
+                            />
+                            {authError && (
+                              <p className="mt-1 text-xs text-red-500">{authError}</p>
+                            )}
+                            <p className="mt-1 text-xs text-gray-500">
+                              Example: {"{"}"Authorization": "Bearer eyJhbGciOiJ..."{"}"}
                             </p>
                           </div>
-                        </div>
+                        )}
                       </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -633,6 +622,10 @@ export function Dashboard() {
                   }`}
                 >
                   <div className="p-6">
+                    {/* Add instructional text */}
+                    <p className="text-sm text-gray-600 mb-4">
+                      Select the endpoints you want to include in your load test. You can filter, select all, or choose specific endpoints to test.
+                    </p>
                     {endpoints.length > 0 && (
                       <>
                         <div className="flex mb-2 items-center">
@@ -743,6 +736,10 @@ export function Dashboard() {
                     }`}
                   >
                     <div className="p-6">
+                      {/* Add instructional text */}
+                      <p className="text-sm text-gray-600 mb-4">
+                        Configure the request body and parameters for each selected endpoint. This will define the data sent during the load test.
+                      </p>
                       <EndpointsList
                         selectedEndpoints={selectedEndpoints}
                         endpointsData={endpoints}
@@ -771,6 +768,10 @@ export function Dashboard() {
                   }`}
                 >
                   <div className="p-6">
+                    {/* Add instructional text */}
+                    <p className="text-sm text-gray-600 mb-4">
+                      Adjust the stress test parameters below to define how requests will be distributed and executed during testing.
+                    </p>
                     <div className="space-y-6">
                       <div>
                         <div className="flex justify-between items-center mb-2">
@@ -785,19 +786,19 @@ export function Dashboard() {
                           min="1"
                           max="50"
                           value={concurrentRequests}
-                          onChange={(e) => setConcurrentRequests(parseInt(e.target.value, 10))}
+                          onChange={(e) => setConcurrentRequests(parseInt(e.target.value))}
                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                         />
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
-                          <span>1</span>
-                          <span>50</span>
-                        </div>
+                        <p className="mt-1 text-xs text-gray-500">
+                          Controls how many requests will run simultaneously. Higher values create more server load.
+                        </p>
                       </div>
                       
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Distribution Strategy
-                        </label>
+                        <h4 className="text-sm font-medium text-gray-700 mb-3">Distribution Strategy</h4>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Select how requests should be distributed across your endpoints. Each strategy creates different load patterns.
+                        </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {isLoadingStrategies ? (
                             <div className="col-span-3 py-4 text-center text-sm text-gray-500">
@@ -859,11 +860,17 @@ export function Dashboard() {
                           Show advanced distribution options
                         </label>
                       </div>
+                      <p className="text-xs text-gray-500 mt-1 ml-6">
+                        Advanced options allow fine-tuning of request timing, distribution percentages, and randomization parameters.
+                      </p>
                       
                       {/* Strategy-specific options */}
                       {showAdvancedOptions && distributionMode === 'sequential' && (
                         <div>
                           <h4 className="text-sm font-medium text-gray-700 mb-2">Sequential Options</h4>
+                          <p className="text-sm text-gray-600 mb-3">
+                            Configure how sequential requests are executed, including delays between requests and repetition count.
+                          </p>
                           <div className="space-y-2">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -914,7 +921,6 @@ export function Dashboard() {
                             <p className="text-sm text-gray-700 mb-4">
                               Set the percentage of requests for each endpoint. Total must equal 100%.
                             </p>
-                            
                             {selectedEndpoints.length > 0 && (
                               <div className="space-y-4">
                                 {selectedEndpoints.map((endpoint, index) => {
@@ -1061,6 +1067,9 @@ export function Dashboard() {
                       {showAdvancedOptions && distributionMode === 'random' && (
                         <div>
                           <h4 className="text-sm font-medium text-gray-700 mb-2">Random Options</h4>
+                          <p className="text-sm text-gray-600 mb-3">
+                            Configure randomization parameters to control how requests are distributed across endpoints.
+                          </p>
                           <div className="space-y-2">
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">
