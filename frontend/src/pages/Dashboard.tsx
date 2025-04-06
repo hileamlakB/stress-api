@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag } from 'lucide-react';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -509,6 +509,15 @@ export function Dashboard() {
               <span className="ml-2 text-xl font-semibold">FastAPI Stress Tester 🚀</span>
             </div>
             <div className="flex items-center space-x-4">
+              <RouterLink to="/wizard">
+                <Button
+                  size="sm"
+                  className="flex items-center"
+                >
+                  <Wand2 className="h-5 w-5 mr-1" />
+                  Switch to Wizard
+                </Button>
+              </RouterLink>
               <Button
                 variant="outline"
                 size="sm"
