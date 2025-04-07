@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Zap, BarChart3 } from 'lucide-react';
+import { Activity, Zap, BarChart3, Wand2 } from 'lucide-react';
 import { Button } from '../components/Button';
 
 export function LandingPage() {
@@ -34,11 +34,19 @@ export function LandingPage() {
             A powerful stress testing tool designed specifically for FastAPI applications.
             Monitor performance, analyze bottlenecks, and ensure your API can handle the load.
           </p>
-          <Link to="/register">
-            <Button size="lg" className="animate-pulse">
-              Get Started
-            </Button>
-          </Link>
+          <div className="flex justify-center space-x-4">
+            <Link to="/register">
+              <Button size="lg" className="animate-pulse">
+                Get Started
+              </Button>
+            </Link>
+            <Link to="/wizard">
+              <Button size="lg" variant="outline" className="flex items-center">
+                <Wand2 className="h-5 w-5 mr-2" />
+                Try Step Wizard
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mt-20">

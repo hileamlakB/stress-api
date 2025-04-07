@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Wand2, LayoutDashboard } from 'lucide-react';
 import { EndpointsList } from './endpoints/EndpointsList';
 import { EndpointSchema, StressTestEndpointConfig } from '../types/api';
+import { Button } from './Button';
 
 // Sample endpoint data for testing
 const sampleEndpoints: EndpointSchema[] = [
@@ -65,7 +68,23 @@ export function EndpointDataWrapper({ showTestComponent = true }: EndpointDataWr
   
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-xl font-bold mb-4">Test: Endpoint Data Configuration</h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">Test: Endpoint Data Configuration</h2>
+        <div className="flex space-x-3">
+          <Link to="/dashboard">
+            <Button size="sm" className="flex items-center">
+              <LayoutDashboard className="h-4 w-4 mr-1" />
+              Dashboard
+            </Button>
+          </Link>
+          <Link to="/wizard">
+            <Button size="sm" className="flex items-center">
+              <Wand2 className="h-4 w-4 mr-1" />
+              Wizard
+            </Button>
+          </Link>
+        </div>
+      </div>
       
       <div className="mb-4 p-4 bg-gray-100 rounded">
         <h3 className="font-medium mb-2">Selected Endpoints:</h3>
