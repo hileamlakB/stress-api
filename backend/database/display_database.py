@@ -6,12 +6,20 @@ from tabulate import tabulate
 
 # Import directly since we're in the database directory
 from database import SessionLocal
-from models import User, Session as DBSession, SessionConfiguration
+from models import User, Session as DBSession, SessionConfiguration, TestResult
 
 def format_json(json_data):
     if json_data is None:
         return "None"
     return json.dumps(json_data, indent=2)
+
+def truncate_string(s, max_length=50):
+    """Truncate a string to a maximum length."""
+    if s is None:
+        return "None"
+    if len(str(s)) > max_length:
+        return str(s)[:max_length] + "..."
+    return str(s)
 
 def display_database():
     """Display all entries in the database."""
@@ -51,6 +59,53 @@ def display_database():
         print(tabulate(config_data, headers=["ID", "Session ID", "Endpoint URL", "HTTP Method", 
                                            "Concurrent Users", "Ramp Up Time", "Test Duration", "Think Time"], 
                       tablefmt="grid"))
+        
+        # Get all test results
+        test_results = db.query(TestResult).all()
+        print("\n===== TEST RESULTS =====")
+        if test_results:
+            result_data = []
+            for r in test_results:
+                result_data.append([
+                    str(r.id),
+                    str(r.configuration_id),
+                    r.test_id,
+                    r.status,
+                    r.start_time,
+                    r.end_time,
+                    r.total_requests,
+                    r.successful_requests,
+                    r.failed_requests,
+                    r.avg_response_time
+                ])
+            print(tabulate(result_data, headers=["ID", "Config ID", "Test ID", "Status", 
+                                               "Start Time", "End Time", "Total Reqs", 
+                                               "Success", "Failed", "Avg Resp Time"], 
+                          tablefmt="grid"))
+            
+            # Display detailed test result information
+            print("\n===== DETAILED TEST RESULT INFORMATION =====")
+            for i, r in enumerate(test_results):
+                print(f"\nTest Result {i+1}: {r.id}")
+                print(f"Test ID: {r.test_id}")
+                print(f"Configuration ID: {r.configuration_id}")
+                print(f"Status: {r.status}")
+                print(f"Time: {r.start_time} to {r.end_time or 'In Progress'}")
+                print(f"Requests: {r.total_requests} total, {r.successful_requests} successful, {r.failed_requests} failed")
+                print(f"Response Times: avg={r.avg_response_time}ms, min={r.min_response_time}ms, max={r.max_response_time}ms")
+                
+                print("\nStatus Codes:")
+                print(format_json(r.status_codes))
+                
+                print("\nSummary:")
+                print(truncate_string(format_json(r.summary), 200))
+                
+                print("\nResults Data (truncated):")
+                print(truncate_string(format_json(r.results_data), 200))
+                
+                print("-" * 80)
+        else:
+            print("No test results found in the database.")
         
         # Display detailed configuration information for each config
         print("\n===== DETAILED CONFIGURATION INFORMATION =====")

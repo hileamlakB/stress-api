@@ -110,6 +110,33 @@ This will show:
 - All users with their IDs and email addresses
 - All sessions with their metadata and relationships to users
 - All configurations with their test parameters and relationships to sessions
+- All test results with detailed metrics and status information
+
+### Add Example Test Results
+
+To populate the database with example test results for existing configurations:
+
+```bash
+cd database
+python add_test_results.py
+```
+
+This will create:
+- Completed test results with various metrics and status codes
+- In-progress test results for some configurations
+- Failed test results with error information
+- A mix of test results across different time periods
+
+The example test results include:
+- Detailed performance metrics (requests, success/failure counts, response times)
+- Status code distributions
+- Endpoint-specific results
+- Summary statistics
+
+This is useful for:
+- Testing the test results API endpoints
+- Visualizing how test data is stored and structured
+- Demonstrating the system's capability to track test history
 
 ## API Endpoints
 
@@ -122,23 +149,33 @@ This will show:
 
 ### Stress Testing Endpoints
 
-- `POST /api/start-test`: Start a simple stress test
-- `GET /api/test-results/{test_id}`: Get results from a simple test
-- `POST /api/stop-test/{test_id}`: Stop a running test
+- `POST /api/test/start`: Start a simple stress test
+- `GET /api/test/{test_id}/results`: Get results from a simple test
+- `POST /api/test/{test_id}/stop`: Stop a running test
 
 ### Advanced Stress Testing Endpoints
 
-- `POST /api/advanced-test`: Start an advanced stress test with different distribution strategies
-- `GET /api/advanced-test/{test_id}/progress`: Get progress of a running advanced test
-- `GET /api/advanced-test/{test_id}/results`: Get detailed results from an advanced test
-- `POST /api/advanced-test/{test_id}/stop`: Stop a running advanced test
+- `POST /api/stress-test/start`: Start an advanced stress test with different distribution strategies
+- `GET /api/stress-test/{test_id}/results`: Get detailed results from an advanced test
+- `POST /api/stress-test/{test_id}/stop`: Stop a running advanced test
+
+### Test Results Management Endpoints
+
+- `GET /api/test-results/filter`: Get filtered test results with pagination support
+  - Parameters: `user_email`, `session_id`, `configuration_id`, `status`, `start_date`, `end_date`, `limit`, `offset`
+- `GET /api/test-results/{result_id}`: Get a specific test result by ID
+
+### Session Management Endpoints
+
+- `GET /api/user/{email}/sessions`: Get all sessions and configurations for a user
+- `POST /api/sessions/configuration`: Create a new session configuration
 
 ## Example Usage
 
 ### Start an Advanced Stress Test
 
 ```bash
-curl -X POST "http://localhost:8000/api/advanced-test" \
+curl -X POST "http://localhost:8000/api/stress-test/start" \
   -H "Content-Type: application/json" \
   -d '{
     "target_url": "https://example-api.com",
@@ -172,6 +209,24 @@ curl -X POST "http://localhost:8000/api/openapi-endpoints" \
   -d '{
     "target_url": "https://example-api.com"
   }'
+```
+
+### Get Filtered Test Results
+
+```bash
+curl -X GET "http://localhost:8000/api/test-results/filter?user_email=user1@example.com&status=completed&limit=5" | python -m json.tool
+```
+
+### Get a Specific Test Result
+
+```bash
+curl -X GET "http://localhost:8000/api/test-results/{result_id}" | python -m json.tool
+```
+
+### Get User Sessions and Configurations
+
+```bash
+curl -X GET "http://localhost:8000/api/user/user1@example.com/sessions" | python -m json.tool
 ```
 
 ## Troubleshooting

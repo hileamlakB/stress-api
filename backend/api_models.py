@@ -244,3 +244,37 @@ class StrategyRequirements(BaseModel):
 
 class DistributionRequirementsResponse(BaseModel):
     strategies: Dict[str, StrategyRequirements] = Field(..., description="Requirements for each distribution strategy")
+
+# Test result models
+class TestResultModel(BaseModel):
+    id: str = Field(..., description="Unique identifier for the test result")
+    configuration_id: str = Field(..., description="ID of the session configuration")
+    test_id: str = Field(..., description="ID assigned to the test run")
+    start_time: datetime = Field(..., description="Test start timestamp")
+    end_time: Optional[datetime] = Field(None, description="Test end timestamp")
+    status: str = Field(..., description="Test status (pending, running, completed, failed, stopped)")
+    total_requests: int = Field(..., description="Total number of requests made")
+    successful_requests: int = Field(..., description="Number of successful requests")
+    failed_requests: int = Field(..., description="Number of failed requests")
+    avg_response_time: Optional[float] = Field(None, description="Average response time in seconds")
+    min_response_time: Optional[float] = Field(None, description="Minimum response time in seconds")
+    max_response_time: Optional[float] = Field(None, description="Maximum response time in seconds")
+    status_codes: Optional[Dict[str, int]] = Field(None, description="Count of each status code")
+    results_data: Optional[Dict[str, Any]] = Field(None, description="Detailed test results")
+    summary: Optional[Dict[str, Any]] = Field(None, description="Summary statistics")
+
+class TestResultsFilterRequest(BaseModel):
+    user_email: str = Field(..., description="Email of the user")
+    session_id: Optional[str] = Field(None, description="Filter by session ID")
+    configuration_id: Optional[str] = Field(None, description="Filter by configuration ID")
+    status: Optional[str] = Field(None, description="Filter by test status")
+    start_date: Optional[datetime] = Field(None, description="Filter by start date (inclusive)")
+    end_date: Optional[datetime] = Field(None, description="Filter by end date (inclusive)")
+    limit: Optional[int] = Field(50, description="Maximum number of results to return")
+    offset: Optional[int] = Field(0, description="Number of results to skip")
+
+class TestResultsResponse(BaseModel):
+    results: List[TestResultModel] = Field(..., description="List of test results")
+    total: int = Field(..., description="Total number of results matching the filter")
+    limit: int = Field(..., description="Maximum number of results returned")
+    offset: int = Field(..., description="Number of results skipped")
