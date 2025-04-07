@@ -181,12 +181,11 @@ export class ApiService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response body:', errorText);
         throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error('Error fetching user sessions:', error);
       throw error;
