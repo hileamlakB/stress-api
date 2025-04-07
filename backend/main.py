@@ -43,11 +43,30 @@ from api_models import (
     TestScenarioGenerationRequest,
     TestScenario,
     EndpointTestDataRequest,
-    EndpointTestDataResponse
+    EndpointTestDataResponse,
+    TestResultModel,  # New import
+    TestResultsFilterRequest,  # New import
+    TestResultsResponse  # New import
 )
 from metrics_generator import metrics_manager
 from database.database import get_db
-from database.crud import get_user_by_email, get_user_sessions as get_db_user_sessions, get_session_configs, create_session, create_session_config, get_session
+from database.crud import (
+    get_user_by_email, 
+    get_user_sessions as get_db_user_sessions, 
+    get_session_configs, 
+    create_session, 
+    create_session_config, 
+    get_session,
+    create_test_result,  # New import
+    get_test_result,  # New import
+    get_test_result_by_test_id,  # New import
+    get_config_test_results,  # New import
+    get_session_test_results,  # New import
+    get_user_test_results,  # New import
+    get_filtered_user_test_results,  # New import
+    get_filtered_user_test_results_count,  # New import
+    update_test_result  # New import
+)
 from sqlalchemy.orm import Session
 
 # Session configuration models
@@ -364,14 +383,40 @@ async def generate_sample_data(endpoint: EndpointSchema):
         )
 
 # Endpoint to start stress test
-@app.post("/api/start-test", response_model=TestStartResponse)
-async def start_test(config: TestConfigRequest):
+@app.post("/api/test/start", response_model=TestStartResponse)
+async def start_test(config: TestConfigRequest, db: Session = Depends(get_db)):
     try:
         test_id = str(uuid.uuid4())
-        # Start the test asynchronously
-        await stress_tester.run_test(
+        
+        # Store test configuration in the database if a session_id is provided
+        session_config = None
+        if hasattr(config, 'session_id') and config.session_id:
+            try:
+                session_id = uuid.UUID(config.session_id)
+                session = get_session(db, session_id)
+                
+                if session:
+                    # Create a session configuration for this test
+                    session_config = create_session_config(
+                        db,
+                        session_id=session_id,
+                        endpoint_url=str(config.target_url),
+                        http_method="MULTIPLE",  # This test can use multiple methods
+                        concurrent_users=config.concurrent_users,
+                        ramp_up_time=0,  # Not applicable for this test type
+                        test_duration=config.duration,
+                        think_time=0,  # Not applicable for this test type
+                        request_headers=config.headers,
+                        request_params=None,  # Not applicable for this test type
+                        success_criteria=None  # Not applicable for this test type
+                    )
+            except (ValueError, Exception) as e:
+                logger.warning(f"Could not store test configuration: {str(e)}")
+        
+        # Start the test
+        await stress_tester.start_test(
             test_id=test_id,
-            target_url=str(config.target_url),
+            target_url=config.target_url,
             concurrent_users=config.concurrent_users,
             request_rate=config.request_rate,
             duration=config.duration,
@@ -380,6 +425,24 @@ async def start_test(config: TestConfigRequest):
             payload_data=config.payload_data
         )
         
+        # Store initial test result in the database if we have a session configuration
+        if session_config:
+            create_test_result(
+                db,
+                configuration_id=session_config.id,
+                test_id=test_id,
+                status=TestStatus.RUNNING.value,
+                start_time=datetime.now()
+            )
+        
+        # Store test configuration for later reference
+        test_progress[test_id] = {
+            "status": TestStatus.RUNNING,
+            "config": config,
+            "start_time": datetime.now(),
+            "session_config_id": str(session_config.id) if session_config else None
+        }
+        
         return TestStartResponse(
             test_id=test_id,
             status=TestStatus.RUNNING,
@@ -387,1090 +450,510 @@ async def start_test(config: TestConfigRequest):
             start_time=datetime.now()
         )
     except Exception as e:
+        logger.error(f"Error starting test: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error starting test: {str(e)}"
         )
 
 # Endpoint to get test results
-@app.get("/api/test-results/{test_id}", response_model=TestResultsResponse)
-async def get_test_results(test_id: str):
+@app.get("/api/test/{test_id}/results", response_model=TestResultsResponse)
+async def get_test_results(test_id: str, db: Session = Depends(get_db)):
     try:
-        results = stress_tester.get_results(test_id)
+        if test_id not in stress_tester.results:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test with ID {test_id} not found"
+            )
         
-        # Calculate summary statistics
-        summary = {
-            "total_requests": len(results),
-            "successful_requests": sum(1 for r in results if r["success"]),
-            "failed_requests": sum(1 for r in results if not r["success"]),
-            "avg_response_time": sum(r["response_time"] for r in results) / len(results) if results else 0,
-            "min_response_time": min((r["response_time"] for r in results), default=0),
-            "max_response_time": max((r["response_time"] for r in results), default=0),
-        }
+        results = stress_tester.results[test_id]
+        test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
+        
+        # Get summary statistics
+        summary = get_test_summary(test_id)
+        
+        # Update test result in the database if we have a session configuration
+        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
+        if session_config_id:
+            try:
+                config_id = uuid.UUID(session_config_id)
+                test_result = get_test_result_by_test_id(db, test_id)
+                
+                if test_result:
+                    # Update the test result with the latest data
+                    update_test_result(
+                        db,
+                        result_id=test_result.id,
+                        status=test_status.value,
+                        total_requests=summary.get("total_requests", 0),
+                        successful_requests=summary.get("successful_requests", 0),
+                        failed_requests=summary.get("failed_requests", 0),
+                        avg_response_time=summary.get("avg_response_time"),
+                        min_response_time=summary.get("min_response_time"),
+                        max_response_time=summary.get("max_response_time"),
+                        status_codes=summary.get("status_codes"),
+                        summary=summary,
+                        results_data=results,
+                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
+                    )
+            except Exception as e:
+                logger.warning(f"Could not update test result in database: {str(e)}")
         
         return TestResultsResponse(
             test_id=test_id,
-            status=TestStatus.COMPLETED if not stress_tester.active_tests.get(test_id) else TestStatus.RUNNING,
+            status=test_status,
             results=results,
             summary=summary
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error getting test results: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting test results: {str(e)}"
         )
 
 # Endpoint to stop ongoing test
-@app.post("/api/stop-test/{test_id}", response_model=TestStopResponse)
-async def stop_test(test_id: str):
+@app.post("/api/test/{test_id}/stop", response_model=TestStopResponse)
+async def stop_test(test_id: str, db: Session = Depends(get_db)):
     try:
-        if stress_tester.stop_test(test_id):
-            return TestStopResponse(
-                test_id=test_id,
-                status=TestStatus.STOPPED,
-                stop_time=datetime.now()
+        if test_id not in stress_tester.active_tests:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test with ID {test_id} not found or already completed"
             )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test {test_id} not found or already completed"
+        
+        await stress_tester.stop_test(test_id)
+        test_progress[test_id]["status"] = TestStatus.STOPPED
+        
+        # Update test result in the database if we have a session configuration
+        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
+        if session_config_id:
+            try:
+                config_id = uuid.UUID(session_config_id)
+                test_result = get_test_result_by_test_id(db, test_id)
+                
+                if test_result:
+                    # Update the test result with the latest data
+                    summary = get_test_summary(test_id)
+                    update_test_result(
+                        db,
+                        result_id=test_result.id,
+                        status=TestStatus.STOPPED.value,
+                        total_requests=summary.get("total_requests", 0),
+                        successful_requests=summary.get("successful_requests", 0),
+                        failed_requests=summary.get("failed_requests", 0),
+                        avg_response_time=summary.get("avg_response_time"),
+                        min_response_time=summary.get("min_response_time"),
+                        max_response_time=summary.get("max_response_time"),
+                        status_codes=summary.get("status_codes"),
+                        summary=summary,
+                        results_data=stress_tester.results.get(test_id, {}),
+                        end_time=datetime.now()
+                    )
+            except Exception as e:
+                logger.warning(f"Could not update test result in database: {str(e)}")
+        
+        return TestStopResponse(
+            test_id=test_id,
+            status=TestStatus.STOPPED,
+            stop_time=datetime.now()
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error stopping test: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error stopping test: {str(e)}"
         )
 
 # Endpoint to start an advanced stress test with multiple strategies
-@app.post("/api/advanced-test", response_model=TestStartResponse)
-async def start_advanced_test(config: StressTestConfig):
+@app.post("/api/stress-test/start", response_model=TestStartResponse)
+async def start_advanced_test(config: StressTestConfig, db: Session = Depends(get_db)):
     try:
         test_id = str(uuid.uuid4())
         
-        # Fetch endpoint schemas if they exist
-        endpoint_schemas = {}
-        try:
-            schema = await OpenAPIParser.fetch_openapi_spec(str(config.target_url))
-            # Build a dictionary of endpoint schemas for easy lookup
-            for endpoint_info in OpenAPIParser.parse_schema(schema):
-                endpoint_key = f"{endpoint_info.method} {endpoint_info.path}"
-                endpoint_schemas[endpoint_key] = {
-                    "parameters": [param.dict() for param in endpoint_info.parameters],
-                    "requestBody": endpoint_info.request_body
-                }
-        except Exception as e:
-            logger.warning(f"Could not fetch OpenAPI schema: {e}. Will proceed without schema validation.")
+        # Store test configuration in the database if a session_id is provided
+        session_config = None
+        if hasattr(config, 'session_id') and config.session_id:
+            try:
+                session_id = uuid.UUID(config.session_id)
+                session = get_session(db, session_id)
+                
+                if session:
+                    # Create a session configuration for this test
+                    session_config = create_session_config(
+                        db,
+                        session_id=session_id,
+                        endpoint_url=str(config.target_url),
+                        http_method="MULTIPLE",  # This test can use multiple methods
+                        concurrent_users=config.max_concurrent_users,
+                        ramp_up_time=0,  # Not applicable for this test type
+                        test_duration=config.duration,
+                        think_time=0,  # Not applicable for this test type
+                        request_headers=config.headers,
+                        request_params=None,  # Not applicable for this test type
+                        success_criteria=None  # Not applicable for this test type
+                    )
+            except (ValueError, Exception) as e:
+                logger.warning(f"Could not store test configuration: {str(e)}")
         
-        # Convert endpoint config objects to dictionaries
-        endpoint_configs = []
-        for endpoint in config.endpoints:
-            endpoint_configs.append({
-                "path": endpoint.path,
-                "method": endpoint.method,
-                "weight": endpoint.weight,
-                "custom_parameters": endpoint.custom_parameters
-            })
+        # Start the test based on the strategy
+        if config.strategy == DistributionStrategy.SEQUENTIAL:
+            await stress_tester.start_sequential_test(
+                test_id=test_id,
+                target_url=config.target_url,
+                endpoints=[{
+                    "path": endpoint.path,
+                    "method": endpoint.method,
+                    "custom_parameters": endpoint.custom_parameters
+                } for endpoint in config.endpoints],
+                max_concurrent_users=config.max_concurrent_users,
+                request_rate=config.request_rate,
+                duration=config.duration,
+                headers=config.headers
+            )
+        elif config.strategy == DistributionStrategy.INTERLEAVED:
+            await stress_tester.start_interleaved_test(
+                test_id=test_id,
+                target_url=config.target_url,
+                endpoints=[{
+                    "path": endpoint.path,
+                    "method": endpoint.method,
+                    "weight": endpoint.weight,
+                    "custom_parameters": endpoint.custom_parameters
+                } for endpoint in config.endpoints],
+                max_concurrent_users=config.max_concurrent_users,
+                request_rate=config.request_rate,
+                duration=config.duration,
+                headers=config.headers
+            )
+        elif config.strategy == DistributionStrategy.RANDOM:
+            await stress_tester.start_random_test(
+                test_id=test_id,
+                target_url=config.target_url,
+                endpoints=[{
+                    "path": endpoint.path,
+                    "method": endpoint.method,
+                    "weight": endpoint.weight,
+                    "custom_parameters": endpoint.custom_parameters
+                } for endpoint in config.endpoints],
+                max_concurrent_users=config.max_concurrent_users,
+                request_rate=config.request_rate,
+                duration=config.duration,
+                headers=config.headers
+            )
+        else:
+            raise ValueError(f"Unsupported distribution strategy: {config.strategy}")
         
-        # Start the test asynchronously
-        asyncio.create_task(stress_tester.run_advanced_test(
-            test_id=test_id,
-            target_url=str(config.target_url),
-            strategy=config.strategy,
-            max_concurrent_users=config.max_concurrent_users,
-            request_rate=config.request_rate,
-            duration=config.duration,
-            endpoints=endpoint_configs,
-            headers=config.headers,
-            endpoint_schemas=endpoint_schemas
-        ))
+        # Store initial test result in the database if we have a session configuration
+        if session_config:
+            create_test_result(
+                db,
+                configuration_id=session_config.id,
+                test_id=test_id,
+                status=TestStatus.RUNNING.value,
+                start_time=datetime.now()
+            )
+        
+        # Store test configuration for later reference
+        test_progress[test_id] = {
+            "status": TestStatus.RUNNING,
+            "config": config,
+            "start_time": datetime.now(),
+            "session_config_id": str(session_config.id) if session_config else None
+        }
         
         return TestStartResponse(
             test_id=test_id,
             status=TestStatus.RUNNING,
-            config=TestConfigRequest(
-                target_url=config.target_url,
-                concurrent_users=config.max_concurrent_users,
-                request_rate=config.request_rate,
-                duration=config.duration,
-                endpoints=[f"{e.method} {e.path}" for e in config.endpoints],
-                headers=config.headers,
-            ),
+            config=config,
             start_time=datetime.now()
         )
     except Exception as e:
+        logger.error(f"Error starting advanced test: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-# Endpoint to get advanced test progress
-@app.get("/api/advanced-test/{test_id}/progress", response_model=StressTestProgressResponse)
-async def get_advanced_test_progress(test_id: str):
-    try:
-        progress = stress_tester.get_test_progress(test_id)
-        
-        if progress["status"] == "not_found":
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test {test_id} not found"
-            )
-        
-        test_status = TestStatus.RUNNING
-        if progress["status"] == "completed":
-            test_status = TestStatus.COMPLETED
-        
-        return StressTestProgressResponse(
-            test_id=test_id,
-            status=test_status,
-            elapsed_time=progress["elapsed_time"],
-            completed_requests=progress["completed_requests"],
-            results_available=progress["results_available"]
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error starting advanced test: {str(e)}"
         )
 
 # Endpoint to get advanced test results
-@app.get("/api/advanced-test/{test_id}/results", response_model=StressTestResultsResponse)
-async def get_advanced_test_results(test_id: str):
+@app.get("/api/stress-test/{test_id}/results", response_model=StressTestResultsResponse)
+async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db)):
     try:
-        results = stress_tester.get_advanced_results(test_id)
-        
-        if not results:
+        if test_id not in stress_tester.results:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test {test_id} not found or has no results"
+                detail=f"Test with ID {test_id} not found"
             )
         
-        # Convert the raw results into the response model
-        endpoint_results = []
-        for endpoint_key, endpoint_data in results["results"].items():
-            for result in endpoint_data:
-                endpoint_results.append(result)
+        results = []
+        raw_results = stress_tester.results.get(test_id, {})
+        
+        # Process results for each endpoint
+        for endpoint_key, endpoint_results in raw_results.items():
+            for result in endpoint_results:
+                results.append(EndpointResult(
+                    endpoint=endpoint_key,
+                    concurrent_requests=result.get("concurrent_requests", 0),
+                    success_count=result.get("success_count", 0),
+                    failure_count=result.get("failure_count", 0),
+                    avg_response_time=result.get("avg_response_time", 0),
+                    min_response_time=result.get("min_response_time", 0),
+                    max_response_time=result.get("max_response_time", 0),
+                    status_codes=result.get("status_codes", {}),
+                    timestamp=datetime.now(),
+                    error_message=result.get("error_message")
+                ))
+        
+        # Get test status and configuration
+        test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
+        test_config = test_progress.get(test_id, {}).get("config")
+        test_start_time = test_progress.get(test_id, {}).get("start_time", datetime.now())
+        
+        # Calculate summary statistics
+        summary = {
+            "total_requests": sum(r.success_count + r.failure_count for r in results),
+            "successful_requests": sum(r.success_count for r in results),
+            "failed_requests": sum(r.failure_count for r in results),
+            "avg_response_time": sum(r.avg_response_time * (r.success_count + r.failure_count) 
+                                    for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
+            "min_response_time": min((r.min_response_time for r in results), default=0),
+            "max_response_time": max((r.max_response_time for r in results), default=0),
+            "status_codes": {}
+        }
+        
+        # Combine status codes from all results
+        for result in results:
+            for status_code, count in result.status_codes.items():
+                if status_code in summary["status_codes"]:
+                    summary["status_codes"][status_code] += count
+                else:
+                    summary["status_codes"][status_code] = count
+        
+        # Update test result in the database if we have a session configuration
+        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
+        if session_config_id:
+            try:
+                config_id = uuid.UUID(session_config_id)
+                test_result = get_test_result_by_test_id(db, test_id)
+                
+                if test_result:
+                    # Update the test result with the latest data
+                    update_test_result(
+                        db,
+                        result_id=test_result.id,
+                        status=test_status.value,
+                        total_requests=summary.get("total_requests", 0),
+                        successful_requests=summary.get("successful_requests", 0),
+                        failed_requests=summary.get("failed_requests", 0),
+                        avg_response_time=summary.get("avg_response_time"),
+                        min_response_time=summary.get("min_response_time"),
+                        max_response_time=summary.get("max_response_time"),
+                        status_codes=summary.get("status_codes"),
+                        summary=summary,
+                        results_data=raw_results,
+                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
+                    )
+            except Exception as e:
+                logger.warning(f"Could not update test result in database: {str(e)}")
         
         return StressTestResultsResponse(
             test_id=test_id,
-            status=TestStatus.COMPLETED if not stress_tester.active_tests.get(test_id) else TestStatus.RUNNING,
-            config=results["config"],
-            start_time=results["start_time"],
-            end_time=results["end_time"],
-            results=endpoint_results,
-            summary=results["summary"]
+            status=test_status,
+            config=test_config,
+            start_time=test_start_time,
+            end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None,
+            results=results,
+            summary=summary
         )
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error getting advanced test results: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error getting advanced test results: {str(e)}"
         )
 
 # Endpoint to stop an advanced test
-@app.post("/api/advanced-test/{test_id}/stop", response_model=TestStopResponse)
-async def stop_advanced_test(test_id: str):
+@app.post("/api/stress-test/{test_id}/stop", response_model=TestStopResponse)
+async def stop_advanced_test(test_id: str, db: Session = Depends(get_db)):
     try:
-        if stress_tester.stop_test(test_id):
-            return TestStopResponse(
-                test_id=test_id,
-                status=TestStatus.STOPPED,
-                stop_time=datetime.now()
+        if test_id not in stress_tester.active_tests:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test with ID {test_id} not found or already completed"
             )
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Test {test_id} not found or already completed"
+        
+        await stress_tester.stop_test(test_id)
+        test_progress[test_id]["status"] = TestStatus.STOPPED
+        
+        # Update test result in the database if we have a session configuration
+        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
+        if session_config_id:
+            try:
+                config_id = uuid.UUID(session_config_id)
+                test_result = get_test_result_by_test_id(db, test_id)
+                
+                if test_result:
+                    # Get the latest results and update the database
+                    results_response = await get_advanced_test_results(test_id, db)
+                    summary = results_response.summary
+                    
+                    update_test_result(
+                        db,
+                        result_id=test_result.id,
+                        status=TestStatus.STOPPED.value,
+                        total_requests=summary.get("total_requests", 0),
+                        successful_requests=summary.get("successful_requests", 0),
+                        failed_requests=summary.get("failed_requests", 0),
+                        avg_response_time=summary.get("avg_response_time"),
+                        min_response_time=summary.get("min_response_time"),
+                        max_response_time=summary.get("max_response_time"),
+                        status_codes=summary.get("status_codes"),
+                        summary=summary,
+                        results_data=stress_tester.results.get(test_id, {}),
+                        end_time=datetime.now()
+                    )
+            except Exception as e:
+                logger.warning(f"Could not update test result in database: {str(e)}")
+        
+        return TestStopResponse(
+            test_id=test_id,
+            status=TestStatus.STOPPED,
+            stop_time=datetime.now()
         )
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error stopping advanced test: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=f"Error stopping advanced test: {str(e)}"
         )
 
-# Endpoint to get available distribution strategies
-@app.get("/api/distribution-strategies", response_model=List[str])
-async def get_distribution_strategies():
-    """
-    Returns all available distribution strategies for stress testing.
-    
-    Returns:
-        List[DistributionStrategy]: A list of all available distribution strategies.
-    """
-    return [strategy.value for strategy in DistributionStrategy]
-
-# Endpoint to get distribution strategy requirements
-@app.get("/api/distribution-requirements", response_model=DistributionRequirementsResponse)
-async def get_distribution_requirements():
-    """
-    Returns detailed requirements for each distribution strategy.
-    
-    These requirements define what configuration options are available for each strategy,
-    including both general strategy options and endpoint-specific requirements.
-    
-    Returns:
-        DistributionRequirementsResponse: Requirements for all available distribution strategies.
-    """
-    return DistributionRequirementsResponse(strategies=distribution_requirements)
-
-@app.websocket("/ws/metrics/{test_id}")
-async def metrics_websocket(websocket: WebSocket, test_id: str):
-    await metrics_manager.connect_client(test_id, websocket)
-    
+# New endpoint to get filtered test results
+@app.get("/api/test-results/filter", response_model=TestResultsResponse)
+async def get_filtered_test_results(
+    user_email: str,
+    session_id: Optional[str] = None,
+    configuration_id: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
     try:
-        while True:
-            await metrics_manager.broadcast_metrics(test_id)
-            await asyncio.sleep(1)  # Update every second
-    except WebSocketDisconnect:
-        await metrics_manager.disconnect_client(test_id, websocket)
-    except Exception as e:
-        print(f"Error in metrics websocket: {e}")
-        await metrics_manager.disconnect_client(test_id, websocket)
-
-# Add a dictionary to store the current state of each test
-test_progress = {}
-
-@app.get("/api/tests/{test_id}/summary")
-async def get_test_summary(test_id: str):
-    """Get summary statistics for a test."""
-    metrics = metrics_manager.generator.generate_metrics(test_id)
-    
-    # List of sample endpoints to show
-    sample_endpoints = [
-        "GET /api/users",
-        "POST /api/orders",
-        "GET /api/products",
-        "PUT /api/user/profile"
-    ]
-    
-    # Define the progression of concurrent request levels
-    all_concurrent_levels = [5, 10, 20, 50, 100]
-    
-    # Initialize test state if this is a new test
-    if test_id not in test_progress:
-        # Start with just the first level
-        test_progress[test_id] = {
-            "current_level_index": 0,  # Start with the first level (5 concurrent users)
-            "metrics": {},  # Store metrics to keep them consistent
-            "last_update": datetime.now()
-        }
-    
-    # Get the current state for this test
-    test_state = test_progress[test_id]
-    
-    # Every few seconds, advance to the next level (simulating test progress)
-    current_time = datetime.now()
-    seconds_since_last_update = (current_time - test_state["last_update"]).total_seconds()
-    if seconds_since_last_update > 3 and test_state["current_level_index"] < len(all_concurrent_levels) - 1:
-        test_state["current_level_index"] += 1
-        test_state["last_update"] = current_time
-    
-    # Get the current available levels based on progress
-    current_max_index = test_state["current_level_index"]
-    available_levels = all_concurrent_levels[:current_max_index + 1]
-    
-    # Generate detailed metrics across available concurrent user levels
-    detailed_metrics = []
-    total_requests = 0
-    peak_concurrent = 0
-    
-    for endpoint in sample_endpoints:
-        # For each endpoint, generate metrics at each available concurrent level
-        for concurrent_requests in available_levels:
-            # Create a unique key for this endpoint + concurrency level
-            metric_key = f"{endpoint}_{concurrent_requests}"
-            
-            # If we already have metrics for this combination, use them
-            # This ensures consistency in the data
-            if metric_key in test_state["metrics"]:
-                metric = test_state["metrics"][metric_key]
-                detailed_metrics.append(metric)
-                
-                # Update totals
-                total_requests += metric["concurrentRequests"]
-                peak_concurrent = max(peak_concurrent, metric["concurrentRequests"])
-                continue
-            
-            # Generate new metrics for this endpoint and concurrency level
-            total_requests += concurrent_requests
-            peak_concurrent = max(peak_concurrent, concurrent_requests)
-            
-            # Calculate success rate (decreasing as load increases)
-            base_success_rate = random.uniform(0.95, 1.0)  # Start with high success rate
-            load_factor = concurrent_requests / 100  # Higher loads affect success more
-            success_rate = max(0.7, base_success_rate - (load_factor * random.uniform(0.05, 0.25)))
-            
-            success_count = int(concurrent_requests * success_rate)
-            failure_count = concurrent_requests - success_count
-            
-            # Generate response times that increase with load
-            base_response_time = random.uniform(30, 100)  # Base time in ms
-            load_multiplier = 1 + (concurrent_requests / 20)  # Scales with load
-            jitter = random.uniform(0.8, 1.2)  # Add variation
-            
-            avg_response_time = base_response_time * load_multiplier * jitter
-            min_response_time = avg_response_time * random.uniform(0.6, 0.9)
-            max_response_time = avg_response_time * random.uniform(1.5, 5.0 if concurrent_requests > 50 else 3.0)
-            
-            # Generate status code distribution
-            status_codes = {}
-            
-            # Success codes (2xx)
-            status_codes["200"] = success_count - random.randint(0, min(5, success_count))
-            if "200" in status_codes and status_codes["200"] < success_count:
-                status_codes["201"] = random.randint(0, success_count - status_codes["200"])
-                status_codes["204"] = success_count - status_codes["200"] - status_codes.get("201", 0)
-            
-            # Error codes (4xx, 5xx) - more errors at higher loads
-            if failure_count > 0:
-                # More server errors (5xx) as load increases
-                error_codes = ["400", "401", "404"] if concurrent_requests < 50 else ["400", "429", "500", "502", "504"]
-                for _ in range(failure_count):
-                    code = random.choice(error_codes)
-                    status_codes[code] = status_codes.get(code, 0) + 1
-            
-            # Create detailed metric object
-            detailed_metric = {
-                "endpoint": endpoint,
-                "concurrentRequests": concurrent_requests,
-                "successCount": success_count,
-                "failureCount": failure_count,
-                "successRate": success_rate,
-                "responseTime": {
-                    "avg": avg_response_time,
-                    "min": min_response_time,
-                    "max": max_response_time
-                },
-                "statusCodes": status_codes,
-                "timestamp": datetime.now().isoformat(),
-                "errorMessage": "Service degraded under load" if concurrent_requests > 50 and failure_count > 10 else None
-            }
-            
-            # Store the metric for consistency in future calls
-            test_state["metrics"][metric_key] = detailed_metric
-            
-            # Add to the result list
-            detailed_metrics.append(detailed_metric)
-    
-    # Return combined metrics, showing progression
-    progress_percentage = ((current_max_index + 1) / len(all_concurrent_levels)) * 100
-    
-    return {
-        "totalRequests": total_requests,
-        "activeEndpoints": sample_endpoints,
-        "peakConcurrentRequests": peak_concurrent,
-        "detailedMetrics": detailed_metrics,
-        "testProgress": {
-            "currentLevel": available_levels[-1],
-            "maxLevel": all_concurrent_levels[-1],
-            "progressPercentage": progress_percentage,
-            "completedLevels": available_levels
-        }
-    }
-
-# Endpoint 1: Get all sessions and configurations for a user
-@app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
-async def get_user_sessions(email: str, db: Session = Depends(get_db)):
-    """
-    Retrieve configuration info for all sessions associated with a specific user.
-    This endpoint queries the database for user sessions and their configurations.
-    """
-    try:
-        # Get user by email
-        user = get_user_by_email(db, email)
-        if not user:
-            raise HTTPException(status_code=404, detail=f"User with email {email} not found")
+        # Get filtered test results
+        results = get_filtered_user_test_results(
+            db,
+            user_email=user_email,
+            session_id=session_id,
+            configuration_id=configuration_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset
+        )
         
-        # Get all sessions for the user
-        db_sessions = get_db_user_sessions(db, user.id)
+        # Get total count for pagination
+        total_count = get_filtered_user_test_results_count(
+            db,
+            user_email=user_email,
+            session_id=session_id,
+            configuration_id=configuration_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date
+        )
         
-        # Convert database sessions to API response model
-        sessions = []
-        for db_session in db_sessions:
-            # Get configurations for this session
-            db_configs = get_session_configs(db, db_session.id)
-            
-            # Convert database configurations to API response model
-            configurations = []
-            for db_config in db_configs:
-                config = SessionConfigModel(
-                    id=str(db_config.id),
-                    session_id=str(db_config.session_id),
-                    endpoint_url=db_config.endpoint_url,
-                    http_method=db_config.http_method,
-                    request_headers=db_config.request_headers,
-                    request_body=db_config.request_body,
-                    request_params=db_config.request_params,
-                    concurrent_users=db_config.concurrent_users,
-                    ramp_up_time=db_config.ramp_up_time,
-                    test_duration=db_config.test_duration,
-                    think_time=db_config.think_time,
-                    success_criteria=db_config.success_criteria
-                )
-                configurations.append(config)
-            
-            # Create session model with configurations
-            session = SessionModel(
-                id=str(db_session.id),
-                name=db_session.name,
-                description=db_session.description,
-                created_at=db_session.created_at,
-                updated_at=db_session.updated_at,
-                configurations=configurations
+        # Convert database results to API response model
+        test_results = []
+        for result in results:
+            test_result = TestResultModel(
+                id=str(result.id),
+                configuration_id=str(result.configuration_id),
+                test_id=result.test_id,
+                start_time=result.start_time,
+                end_time=result.end_time,
+                status=result.status,
+                total_requests=result.total_requests,
+                successful_requests=result.successful_requests,
+                failed_requests=result.failed_requests,
+                avg_response_time=result.avg_response_time,
+                min_response_time=result.min_response_time,
+                max_response_time=result.max_response_time,
+                status_codes=result.status_codes,
+                results_data=result.results_data,
+                summary=result.summary
             )
-            sessions.append(session)
+            test_results.append(test_result)
         
-        # Return user response with sessions
-        return UserSessionsResponse(
-            user_id=str(user.id),
-            email=user.email,
-            sessions=sessions
+        return TestResultsResponse(
+            results=test_results,
+            total=total_count,
+            limit=limit,
+            offset=offset
         )
-    except HTTPException as he:
-        # Re-raise HTTP exceptions
-        raise he
     except Exception as e:
-        # Log the error for debugging
-        logger.error(f"Error in get_user_sessions: {str(e)}")
-        # Raise an HTTP exception
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-# Endpoint 2: Create a new session configuration
-@app.post("/api/sessions/configuration", response_model=SessionConfigModel)
-async def create_session_configuration(config: SessionConfigRequest, user_email: str, db: Session = Depends(get_db)):
-    """
-    Create a new session configuration for a user and store it in the database.
-    
-    This endpoint:
-    1. Finds the user by email
-    2. Creates a new session if session_id is not provided
-    3. Creates a session configuration linked to the session
-    
-    Returns the created configuration with a generated ID.
-    """
-    try:
-        # Find the user by email
-        user = get_user_by_email(db, user_email)
-        if not user:
-            raise HTTPException(status_code=404, detail=f"User with email {user_email} not found")
-        
-        # Check if session exists or create a new one
-        session = None
-        if config.session_id and config.session_id != "new":
-            # Try to get the existing session
-            try:
-                session_uuid = uuid.UUID(config.session_id)
-                session = get_session(db, session_uuid)
-                
-                # Verify the session belongs to the user
-                if session and str(session.user_id) != str(user.id):
-                    raise HTTPException(
-                        status_code=403, 
-                        detail="Session does not belong to the specified user"
-                    )
-            except ValueError:
-                # Invalid UUID format
-                raise HTTPException(status_code=400, detail="Invalid session ID format")
-        
-        # Create a new session if needed
-        if not session:
-            # Generate a default session name if not provided
-            session_name = f"Test Session {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            session_description = f"Configuration for {config.endpoint_url}"
-            
-            # Create the session
-            session = create_session(db, user.id, session_name, session_description)
-            logger.info(f"Created new session {session.id} for user {user_email}")
-        
-        # Create the session configuration
-        session_config = create_session_config(
-            db=db,
-            session_id=session.id,
-            endpoint_url=config.endpoint_url,
-            http_method=config.http_method,
-            request_headers=config.request_headers,
-            request_body=config.request_body,
-            request_params=config.request_params,
-            concurrent_users=config.concurrent_users,
-            ramp_up_time=config.ramp_up_time,
-            test_duration=config.test_duration,
-            think_time=config.think_time,
-            success_criteria=config.success_criteria
+        logger.error(f"Error getting filtered test results: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting filtered test results: {str(e)}"
         )
-        
-        # Return the created configuration
-        return SessionConfigModel(
-            id=str(session_config.id),
-            session_id=str(session_config.session_id),
-            endpoint_url=session_config.endpoint_url,
-            http_method=session_config.http_method,
-            request_headers=session_config.request_headers,
-            request_body=session_config.request_body,
-            request_params=session_config.request_params,
-            concurrent_users=session_config.concurrent_users,
-            ramp_up_time=session_config.ramp_up_time,
-            test_duration=session_config.test_duration,
-            think_time=session_config.think_time,
-            success_criteria=session_config.success_criteria
-        )
-    except HTTPException as he:
-        # Re-raise HTTP exceptions
-        raise he
-    except Exception as e:
-        # Log the error for debugging
-        logger.error(f"Error in create_session_configuration: {str(e)}")
-        # Rollback the transaction in case of error
-        db.rollback()
-        # Raise an HTTP exception
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-# Endpoint to generate data based on schema
-@app.post("/api/generate-data", response_model=DataGenerationResponse)
-async def generate_data(request: DataGenerationRequest):
-    """Generate sample data based on the provided schema definition."""
+# New endpoint to get test result by ID
+@app.get("/api/test-results/{result_id}", response_model=TestResultModel)
+async def get_test_result_by_id(result_id: str, db: Session = Depends(get_db)):
     try:
-        # Initialize the data generator
-        data_generator = RequestDataGenerator()
-        generated_data = None
-        
-        # Generate data based on the schema type
-        if request.schema_type in ['string', 'integer', 'number', 'boolean']:
-            # For primitive types
-            if request.count == 1:
-                generated_data = data_generator.generate_primitive(
-                    request.schema_type, 
-                    request.schema_format, 
-                    request.enum
-                )
-            else:
-                # Generate multiple samples if requested
-                generated_data = [
-                    data_generator.generate_primitive(
-                        request.schema_type, 
-                        request.schema_format, 
-                        request.enum
-                    ) for _ in range(request.count)
-                ]
-        elif request.schema_type == 'object' and request.schema:
-            # For object types
-            if request.count == 1:
-                generated_data = data_generator.generate_object(request.schema)
-            else:
-                generated_data = [
-                    data_generator.generate_object(request.schema)
-                    for _ in range(request.count)
-                ]
-        elif request.schema_type == 'array' and request.schema:
-            # For array types
-            if request.count == 1:
-                generated_data = data_generator.generate_array(request.schema)
-            else:
-                generated_data = [
-                    data_generator.generate_array(request.schema)
-                    for _ in range(request.count)
-                ]
-        else:
+        # Convert string ID to UUID
+        try:
+            result_uuid = uuid.UUID(result_id)
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid schema type or missing schema definition"
+                detail=f"Invalid result ID format: {result_id}"
             )
-            
-        return DataGenerationResponse(
-            generated_data=generated_data,
-            count=request.count,
-            schema_type=request.schema_type
+        
+        # Get test result from database
+        result = get_test_result(db, result_uuid)
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test result with ID {result_id} not found"
+            )
+        
+        # Convert database result to API response model
+        return TestResultModel(
+            id=str(result.id),
+            configuration_id=str(result.configuration_id),
+            test_id=result.test_id,
+            start_time=result.start_time,
+            end_time=result.end_time,
+            status=result.status,
+            total_requests=result.total_requests,
+            successful_requests=result.successful_requests,
+            failed_requests=result.failed_requests,
+            avg_response_time=result.avg_response_time,
+            min_response_time=result.min_response_time,
+            max_response_time=result.max_response_time,
+            status_codes=result.status_codes,
+            results_data=result.results_data,
+            summary=result.summary
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating data: {str(e)}", exc_info=True)
+        logger.error(f"Error getting test result: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error generating data: {str(e)}"
-        )
-
-# Endpoint to generate data for a specific API endpoint
-@app.post("/api/endpoint-data")
-async def generate_endpoint_data(request: EndpointDataGenerationRequest):
-    """Generate sample data for a specific API endpoint."""
-    try:
-        data_generator = RequestDataGenerator()
-        
-        # Result data structure
-        result_samples = []
-        
-        for _ in range(request.count):
-            sample = {
-                "endpoint": f"{request.endpoint_schema.method} {request.endpoint_schema.path}",
-                "data": {}
-            }
-            
-            # Generate path parameters
-            if request.include_path:
-                path_params = {}
-                for param in request.endpoint_schema.parameters:
-                    if param.location == 'path' and param.param_schema:
-                        param_type = param.param_schema.get('type', 'string')
-                        param_format = param.param_schema.get('format')
-                        param_enum = param.param_schema.get('enum')
-                        path_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-                if path_params:
-                    sample["data"]["path_parameters"] = path_params
-            
-            # Generate query parameters
-            if request.include_query:
-                query_params = {}
-                for param in request.endpoint_schema.parameters:
-                    if param.location == 'query' and param.param_schema:
-                        param_type = param.param_schema.get('type', 'string')
-                        param_format = param.param_schema.get('format')
-                        param_enum = param.param_schema.get('enum')
-                        query_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-                if query_params:
-                    sample["data"]["query_parameters"] = query_params
-            
-            # Generate header parameters
-            if request.include_headers:
-                headers = {}
-                for param in request.endpoint_schema.parameters:
-                    if param.location == 'header' and param.param_schema:
-                        param_type = param.param_schema.get('type', 'string')
-                        param_format = param.param_schema.get('format')
-                        param_enum = param.param_schema.get('enum')
-                        headers[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-                if headers:
-                    sample["data"]["headers"] = headers
-            
-            # Generate request body
-            if request.include_body and request.endpoint_schema.request_body:
-                sample["data"]["body"] = data_generator.generate_request_data(request.endpoint_schema.request_body)
-            
-            # Generate example URL with path parameters filled in
-            path_with_params = request.endpoint_schema.path
-            if request.include_path and "path_parameters" in sample["data"]:
-                for param_name, param_value in sample["data"]["path_parameters"].items():
-                    path_with_params = path_with_params.replace(f"{{{param_name}}}", str(param_value))
-            sample["example_url"] = path_with_params
-            
-            # Generate example curl command
-            if request.endpoint_schema.method != "GET":
-                curl_cmd = f"curl -X {request.endpoint_schema.method} "
-                
-                # Add headers
-                if request.include_headers and "headers" in sample["data"]:
-                    for header_name, header_value in sample["data"]["headers"].items():
-                        curl_cmd += f"-H '{header_name}: {header_value}' "
-                
-                # Add authorization header placeholder
-                curl_cmd += "-H 'Authorization: Bearer YOUR_TOKEN' "
-                
-                # Add body
-                if request.include_body and "body" in sample["data"]:
-                    curl_cmd += f"-d '{json.dumps(sample['data']['body'])}' "
-                
-                # Add URL with query params
-                url = path_with_params
-                if request.include_query and "query_parameters" in sample["data"]:
-                    url += "?" + "&".join([f"{k}={v}" for k, v in sample["data"]["query_parameters"].items()])
-                
-                curl_cmd += f"'{{api_base_url}}{url}'"
-                sample["example_curl"] = curl_cmd
-            
-            result_samples.append(sample)
-        
-        return {
-            "count": request.count,
-            "endpoint": f"{request.endpoint_schema.method} {request.endpoint_schema.path}",
-            "samples": result_samples,
-            "timestamp": datetime.now()
-        }
-    except Exception as e:
-        logger.error(f"Error generating endpoint data: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error generating endpoint data: {str(e)}"
-        )
-
-# Endpoint to generate test data for a UI endpoint with specific format
-@app.post("/api/endpoint-test-data", response_model=EndpointTestDataResponse)
-async def generate_endpoint_test_data(request: EndpointTestDataRequest):
-    """Generate test data samples for a specific endpoint in the format needed by the UI."""
-    try:
-        data_generator = RequestDataGenerator()
-        
-        # Result data samples
-        data_samples = []
-        
-        # Get the method and path from the endpoint key
-        method, path = request.endpoint_key.split(' ', 1)
-        
-        for _ in range(request.sample_count):
-            # Create a sample with all types of parameters
-            sample = {}
-            
-            # Generate path parameters
-            path_params = {}
-            for param in request.endpoint_schema.parameters:
-                if param.location == 'path' and param.param_schema:
-                    param_type = param.param_schema.get('type', 'string')
-                    param_format = param.param_schema.get('format')
-                    param_enum = param.param_schema.get('enum')
-                    path_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-            if path_params:
-                sample["path_parameters"] = path_params
-            
-            # Generate query parameters
-            query_params = {}
-            for param in request.endpoint_schema.parameters:
-                if param.location == 'query' and param.param_schema:
-                    param_type = param.param_schema.get('type', 'string')
-                    param_format = param.param_schema.get('format')
-                    param_enum = param.param_schema.get('enum')
-                    query_params[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-            if query_params:
-                sample["query_parameters"] = query_params
-            
-            # Generate header parameters
-            headers = {}
-            for param in request.endpoint_schema.parameters:
-                if param.location == 'header' and param.param_schema:
-                    param_type = param.param_schema.get('type', 'string')
-                    param_format = param.param_schema.get('format')
-                    param_enum = param.param_schema.get('enum')
-                    headers[param.name] = data_generator.generate_primitive(param_type, param_format, param_enum)
-            if headers:
-                sample["headers"] = headers
-            
-            # Generate request body
-            if request.endpoint_schema.request_body:
-                sample["body"] = data_generator.generate_request_data(request.endpoint_schema.request_body)
-            
-            # Add the sample to the result
-            data_samples.append(sample)
-        
-        return EndpointTestDataResponse(
-            endpoint_key=request.endpoint_key,
-            data_samples=data_samples
-        )
-        
-    except Exception as e:
-        logger.error(f"Error generating endpoint test data: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error generating endpoint test data: {str(e)}"
-        )
-
-# Endpoint to generate complete test scenarios
-@app.post("/api/generate-test-scenarios", response_model=List[TestScenario])
-async def generate_test_scenarios(request: TestScenarioGenerationRequest):
-    """Generate complete test scenarios for the provided API endpoints."""
-    try:
-        data_generator = RequestDataGenerator()
-        scenarios = []
-        
-        # Common API patterns for scenario generation
-        scenario_templates = [
-            {
-                "name": "Basic CRUD Operations",
-                "description": "Tests the fundamental Create, Read, Update, Delete operations",
-                "type": "crud"
-            },
-            {
-                "name": "Authentication and Authorization",
-                "description": "Tests user authentication flow and permission checks",
-                "type": "auth"
-            },
-            {
-                "name": "Data Validation and Error Handling",
-                "description": "Tests API's response to invalid inputs and edge cases",
-                "type": "validation"
-            },
-            {
-                "name": "Performance Under Load",
-                "description": "Tests API's behavior with high volume of concurrent requests",
-                "type": "performance"
-            },
-            {
-                "name": "Complex Business Workflow",
-                "description": "Tests a multi-step business process from start to finish",
-                "type": "workflow"
-            }
-        ]
-        
-        # Filter endpoints by method type
-        get_endpoints = [e for e in request.endpoints if e.method == 'GET']
-        post_endpoints = [e for e in request.endpoints if e.method == 'POST']
-        put_endpoints = [e for e in request.endpoints if e.method == 'PUT' or e.method == 'PATCH']
-        delete_endpoints = [e for e in request.endpoints if e.method == 'DELETE']
-        
-        # Generate the requested number of scenarios
-        for i in range(request.scenario_count):
-            # Select a scenario template
-            template = scenario_templates[i % len(scenario_templates)]
-            
-            # Generate scenario name if more than the template count
-            scenario_name = template["name"]
-            if i >= len(scenario_templates):
-                scenario_name += f" (Variation {i // len(scenario_templates) + 1})"
-            
-            scenario = {
-                "name": scenario_name,
-                "description": template["description"],
-                "endpoints": [],
-                "dependencies": [],
-                "workflow": []
-            }
-            
-            # Add endpoints based on scenario type
-            if template["type"] == "crud":
-                # For CRUD, we want POST, GET, PUT, DELETE operations
-                endpoints_to_use = []
-                
-                # Try to find endpoints matching CRUD pattern
-                if post_endpoints:
-                    endpoints_to_use.append(random.choice(post_endpoints))  # Create
-                if get_endpoints:
-                    endpoints_to_use.append(random.choice(get_endpoints))   # Read
-                if put_endpoints:
-                    endpoints_to_use.append(random.choice(put_endpoints))   # Update
-                if delete_endpoints:
-                    endpoints_to_use.append(random.choice(delete_endpoints)) # Delete
-                
-                # Generate sample data for each endpoint
-                for endpoint in endpoints_to_use:
-                    endpoint_data = await generate_sample_data(endpoint)
-                    scenario["endpoints"].append(endpoint_data)
-                
-                # Add dependencies
-                if request.include_dependencies and len(endpoints_to_use) > 1:
-                    # Create -> Read -> Update -> Delete dependency chain
-                    for i in range(len(endpoints_to_use) - 1):
-                        scenario["dependencies"].append({
-                            "source": f"{endpoints_to_use[i].method} {endpoints_to_use[i].path}",
-                            "target": f"{endpoints_to_use[i+1].method} {endpoints_to_use[i+1].path}",
-                            "type": "sequential"
-                        })
-                
-                # Add workflow
-                if request.include_workflows and len(endpoints_to_use) > 0:
-                    scenario["workflow"] = [f"{e.method} {e.path}" for e in endpoints_to_use]
-            
-            elif template["type"] == "auth":
-                # For auth scenario, focus on POST auth endpoints and GET protected resources
-                auth_endpoints = [e for e in post_endpoints if any(auth_term in e.path.lower() for auth_term in ["auth", "login", "token"])]
-                protected_endpoints = get_endpoints[:2] if len(get_endpoints) > 2 else get_endpoints  # Take 2 GET endpoints or all if less than 2
-                
-                endpoints_to_use = auth_endpoints + protected_endpoints
-                
-                # If no auth endpoints found, use any POST endpoint as a substitute
-                if not auth_endpoints and post_endpoints:
-                    endpoints_to_use = [post_endpoints[0]] + protected_endpoints
-                
-                # Generate sample data for each endpoint
-                for endpoint in endpoints_to_use:
-                    endpoint_data = await generate_sample_data(endpoint)
-                    scenario["endpoints"].append(endpoint_data)
-                
-                # Add dependencies
-                if request.include_dependencies and len(endpoints_to_use) > 1:
-                    # Auth -> Protected Resource dependency
-                    for i in range(1, len(endpoints_to_use)):
-                        scenario["dependencies"].append({
-                            "source": f"{endpoints_to_use[0].method} {endpoints_to_use[0].path}",
-                            "target": f"{endpoints_to_use[i].method} {endpoints_to_use[i].path}",
-                            "type": "authentication"
-                        })
-                
-                # Add workflow
-                if request.include_workflows and len(endpoints_to_use) > 0:
-                    scenario["workflow"] = [f"{e.method} {e.path}" for e in endpoints_to_use]
-            
-            elif template["type"] == "validation":
-                # Choose a few endpoints for validation testing
-                endpoints_to_use = []
-                
-                # Prefer endpoints with more parameters or request bodies
-                complex_endpoints = [e for e in request.endpoints if len(e.parameters) > 1 or e.request_body]
-                
-                if complex_endpoints:
-                    # Use up to 3 complex endpoints
-                    endpoints_to_use = complex_endpoints[:3] if len(complex_endpoints) > 3 else complex_endpoints
-                else:
-                    # Fallback to any available endpoints
-                    endpoints_to_use = request.endpoints[:3] if len(request.endpoints) > 3 else request.endpoints
-                
-                # Generate sample data for each endpoint
-                for endpoint in endpoints_to_use:
-                    endpoint_data = await generate_sample_data(endpoint)
-                    
-                    # For validation testing, add some examples of invalid data
-                    if endpoint.parameters or endpoint.request_body:
-                        endpoint_data["invalid_examples"] = []
-                        
-                        # Generate invalid path parameters (if any)
-                        if "path_parameters" in endpoint_data["samples"]:
-                            invalid_path = {**endpoint_data["samples"]["path_parameters"]}
-                            for key in invalid_path:
-                                # Make the parameter invalid by using wrong type
-                                if isinstance(invalid_path[key], str):
-                                    invalid_path[key] = 999999
-                                elif isinstance(invalid_path[key], (int, float)):
-                                    invalid_path[key] = "invalid_value"
-                            
-                            endpoint_data["invalid_examples"].append({
-                                "type": "invalid_path_params",
-                                "data": invalid_path
-                            })
-                        
-                        # Generate invalid request body (if any)
-                        if "request_body" in endpoint_data["samples"]:
-                            invalid_body = {**endpoint_data["samples"]["request_body"]}
-                            
-                            # 1. Missing required fields example
-                            if invalid_body:
-                                missing_field = list(invalid_body.keys())[0]
-                                invalid_body_missing = {k: v for k, v in invalid_body.items() if k != missing_field}
-                                endpoint_data["invalid_examples"].append({
-                                    "type": "missing_required_field",
-                                    "field": missing_field,
-                                    "data": invalid_body_missing
-                                })
-                            
-                            # 2. Invalid data type example
-                            if invalid_body:
-                                field_to_invalidate = list(invalid_body.keys())[0]
-                                invalid_body_type = {**invalid_body}
-                                if isinstance(invalid_body_type[field_to_invalidate], str):
-                                    invalid_body_type[field_to_invalidate] = 12345
-                                elif isinstance(invalid_body_type[field_to_invalidate], (int, float)):
-                                    invalid_body_type[field_to_invalidate] = "not_a_number"
-                                elif isinstance(invalid_body_type[field_to_invalidate], bool):
-                                    invalid_body_type[field_to_invalidate] = "not_a_boolean"
-                                
-                                endpoint_data["invalid_examples"].append({
-                                    "type": "invalid_data_type",
-                                    "field": field_to_invalidate,
-                                    "data": invalid_body_type
-                                })
-                            
-                            # 3. Extremely long value example
-                            if invalid_body:
-                                field_to_invalidate = list(invalid_body.keys())[0]
-                                invalid_body_too_long = {**invalid_body}
-                                invalid_body_too_long[field_to_invalidate] = "x" * 10000
-                                
-                                endpoint_data["invalid_examples"].append({
-                                    "type": "value_too_long",
-                                    "field": field_to_invalidate,
-                                    "data": invalid_body_too_long
-                                })
-                    
-                    scenario["endpoints"].append(endpoint_data)
-                
-                # No dependencies for validation scenarios
-                # But we can still add workflow
-                if request.include_workflows and len(endpoints_to_use) > 0:
-                    scenario["workflow"] = [f"{e.method} {e.path}" for e in endpoints_to_use]
-            
-            elif template["type"] == "performance":
-                # For performance testing, choose a mix of read and write endpoints
-                endpoints_to_use = []
-                
-                # Add a mix of GET and POST/PUT endpoints
-                if get_endpoints:
-                    endpoints_to_use.extend(get_endpoints[:2] if len(get_endpoints) > 2 else get_endpoints)
-                if post_endpoints:
-                    endpoints_to_use.extend(post_endpoints[:1] if len(post_endpoints) > 1 else post_endpoints)
-                if put_endpoints:
-                    endpoints_to_use.extend(put_endpoints[:1] if len(put_endpoints) > 1 else put_endpoints)
-                
-                # Generate sample data for each endpoint
-                for endpoint in endpoints_to_use:
-                    endpoint_data = await generate_sample_data(endpoint)
-                    
-                    # Add performance test specific metadata
-                    endpoint_data["performance_config"] = {
-                        "concurrent_users": [10, 50, 100, 200, 500],
-                        "duration_seconds": 60,
-                        "ramp_up_time": 10,
-                        "think_time_ms": 100
-                    }
-                    
-                    scenario["endpoints"].append(endpoint_data)
-                
-                # No dependencies for performance scenarios
-                # But we can still add workflow
-                if request.include_workflows and len(endpoints_to_use) > 0:
-                    scenario["workflow"] = [f"{e.method} {e.path}" for e in endpoints_to_use]
-            
-            elif template["type"] == "workflow":
-                # For workflow testing, try to build a logical sequence
-                # First, look for endpoints that could represent a business process
-                
-                # Step 1: Look for endpoints that may represent creating a resource
-                create_endpoints = [e for e in post_endpoints if not any(auth_term in e.path.lower() for auth_term in ["auth", "login", "token"])]
-                
-                # Step 2: Find endpoints that might get a list or specific resource
-                get_resource_endpoints = get_endpoints
-                
-                # Step 3: Find endpoints for updating a resource
-                update_endpoints = put_endpoints
-                
-                # Combine in a logical order
-                endpoints_to_use = []
-                
-                # Add create endpoint if available
-                if create_endpoints:
-                    endpoints_to_use.append(random.choice(create_endpoints))
-                
-                # Add get endpoint if available
-                if get_resource_endpoints:
-                    endpoints_to_use.append(random.choice(get_resource_endpoints))
-                
-                # Add update endpoint if available
-                if update_endpoints:
-                    endpoints_to_use.append(random.choice(update_endpoints))
-                
-                # Add another get to verify the update
-                if get_resource_endpoints and len(get_resource_endpoints) > 1:
-                    second_get = random.choice([e for e in get_resource_endpoints if e != endpoints_to_use[1]])
-                    endpoints_to_use.append(second_get)
-                elif get_resource_endpoints:
-                    endpoints_to_use.append(get_resource_endpoints[0])
-                
-                # Generate sample data for each endpoint
-                for endpoint in endpoints_to_use:
-                    endpoint_data = await generate_sample_data(endpoint)
-                    scenario["endpoints"].append(endpoint_data)
-                
-                # Add dependencies
-                if request.include_dependencies and len(endpoints_to_use) > 1:
-                    # Create a chain of dependencies
-                    for i in range(len(endpoints_to_use) - 1):
-                        dependency_type = "data_flow"
-                        if i == 0:
-                            dependency_type = "creation_to_retrieval"
-                        elif i == 1 and len(endpoints_to_use) > 2:
-                            dependency_type = "retrieval_to_update"
-                        
-                        scenario["dependencies"].append({
-                            "source": f"{endpoints_to_use[i].method} {endpoints_to_use[i].path}",
-                            "target": f"{endpoints_to_use[i+1].method} {endpoints_to_use[i+1].path}",
-                            "type": dependency_type
-                        })
-                
-                # Add workflow
-                if request.include_workflows and len(endpoints_to_use) > 0:
-                    scenario["workflow"] = [f"{e.method} {e.path}" for e in endpoints_to_use]
-            
-            scenarios.append(TestScenario(**scenario))
-        
-        return scenarios
-    except Exception as e:
-        logger.error(f"Error generating test scenarios: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error generating test scenarios: {str(e)}"
+            detail=f"Error getting test result: {str(e)}"
         )
 
 if __name__ == "__main__":
