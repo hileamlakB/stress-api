@@ -53,9 +53,9 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
               <div 
                 className={`flex items-center justify-center w-8 h-8 rounded-full border-2 cursor-pointer ${
                   index < currentStepIndex 
-                    ? 'bg-indigo-600 border-indigo-600 text-white' 
+                    ? 'bg-blue-500 border-blue-500 text-white' 
                     : index === currentStepIndex 
-                      ? 'border-indigo-600 text-indigo-600' 
+                      ? 'border-blue-500 text-blue-500' 
                       : 'border-gray-300 text-gray-400'
                 }`}
                 onClick={() => index <= currentStepIndex && goToStep(index)}
@@ -73,7 +73,7 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
               {index < steps.length - 1 && (
                 <div 
                   className={`flex-1 h-0.5 mx-4 ${
-                    index < currentStepIndex ? 'bg-indigo-600' : 'bg-gray-300'
+                    index < currentStepIndex ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                 />
               )}
@@ -87,7 +87,7 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
             <div 
               key={`title-${step.id}`}
               className={`text-xs font-medium ${
-                index <= currentStepIndex ? 'text-indigo-600' : 'text-gray-500'
+                index <= currentStepIndex ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
               }`}
               style={{ 
                 width: `${100 / steps.length}%`,
@@ -107,7 +107,7 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
       </div>
       
       {/* Navigation Buttons */}
-      <div className="flex justify-between pt-4 border-t border-gray-200">
+      <div className="flex justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
         <Button 
           variant="outline"
           onClick={goToPreviousStep}

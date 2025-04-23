@@ -86,10 +86,10 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   }, [onSessionSelect, selectedSessionId, userEmail]);
 
   return (
-    <div className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shadow-sm">
-      <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-        <h2 className="text-lg font-semibold text-gray-800 flex items-center">
-          <Folder size={18} className="mr-2 text-blue-600" />
+    <div className="w-64 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto flex flex-col">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-800">
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+          <Folder size={18} className="mr-2 text-blue-500" />
           Sessions
         </h2>
       </div>
@@ -154,7 +154,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         )}
       </div>
       
-      <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
+      <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
         <p>
           {sessions.length} session{sessions.length !== 1 ? 's' : ''} available
         </p>

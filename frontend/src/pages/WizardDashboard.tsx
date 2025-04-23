@@ -12,6 +12,7 @@ import { ResultsStep } from '../components/wizard/steps/ResultsStep';
 import { SessionSidebar } from '../components/SessionSidebar';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
+import { Footer } from '../components/Footer';
 
 export function WizardDashboard() {
   const navigate = useNavigate();
@@ -88,19 +89,19 @@ export function WizardDashboard() {
   return (
     <WizardProvider>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-        <nav className="bg-white dark:bg-gray-900 border-b dark:border-gray-800/50 border-gray-200/50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <div className="flex items-center">
-                <Zap className="h-8 w-8 text-indigo-600" />
-                <span className="ml-2 text-xl font-semibold">FastAPI Stress Tester 🚀</span>
+        <nav className="bg-gradient-to-b from-gray-900 to-gray-800 border-b border-gray-700 text-white">
+          <div className="container mx-auto px-6 lg:px-12">
+            <div className="flex items-center justify-between h-20">
+              <div className="flex items-center pl-2">
+                <Zap className="h-8 w-8 text-blue-500" />
+                <span className="ml-2 text-xl font-bold">FastAPI Stress Tester</span>
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-5 pr-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => {}}
-                  className="flex items-center"
+                  className="flex items-center bg-transparent text-gray-300 hover:text-white border-gray-600 hover:border-gray-500"
                 >
                   <Settings className="h-5 w-5 mr-1" />
                   Settings
@@ -109,7 +110,7 @@ export function WizardDashboard() {
                   variant="outline"
                   size="sm"
                   onClick={handleSignOut}
-                  className="flex items-center"
+                  className="flex items-center bg-transparent text-gray-300 hover:text-white border-gray-600 hover:border-gray-500"
                 >
                   <LogOut className="h-5 w-5 mr-1" />
                   Sign Out
@@ -131,7 +132,7 @@ export function WizardDashboard() {
           {/* Main content area */}
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto">
-              <div className="bg-white shadow-sm rounded-lg p-6">
+              <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
                 <StepWizard 
                   steps={steps} 
                   onComplete={handleWizardComplete}
@@ -140,6 +141,7 @@ export function WizardDashboard() {
             </div>
           </main>
         </div>
+        <Footer />
       </div>
     </WizardProvider>
   );

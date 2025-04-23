@@ -4,7 +4,7 @@ import { Github, Twitter } from 'lucide-react';
 
 export function Footer() {
   return (
-    <footer className="bg-gradient-to-b from-gray-800 to-gray-900 border-t border-gray-700 text-gray-400">
+    <footer className="bg-gradient-to-b from-gray-800 to-gray-900 border-t border-gray-700 text-gray-400 mt-auto">
       <div className="container mx-auto px-6 py-4 grid md:grid-cols-3 gap-6">
         {/* Brand / Description */}
         <div>
