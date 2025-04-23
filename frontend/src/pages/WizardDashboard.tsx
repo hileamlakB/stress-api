@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Zap, Settings, LogOut, LayoutDashboard } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Zap, Settings, LogOut } from 'lucide-react';
 import { Button } from '../components/Button';
 import { StepWizard } from '../components/wizard/StepWizard';
 import { WizardProvider } from '../components/wizard/WizardContext';
@@ -96,15 +96,6 @@ export function WizardDashboard() {
                 <span className="ml-2 text-xl font-semibold">FastAPI Stress Tester 🚀</span>
               </div>
               <div className="flex items-center space-x-4">
-                <Link to="/dashboard">
-                  <Button
-                    size="sm"
-                    className="flex items-center"
-                  >
-                    <LayoutDashboard className="h-5 w-5 mr-1" />
-                    Classic Dashboard
-                  </Button>
-                </Link>
                 <Button
                   variant="outline"
                   size="sm"
