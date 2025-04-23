@@ -11,6 +11,7 @@ import { ReviewLaunchStep } from '../components/wizard/steps/ReviewLaunchStep';
 import { ResultsStep } from '../components/wizard/steps/ResultsStep';
 import { SessionSidebar } from '../components/SessionSidebar';
 import { signOut, getCurrentUser } from '../lib/auth';
+import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
 
 export function WizardDashboard() {
   const navigate = useNavigate();
@@ -86,8 +87,8 @@ export function WizardDashboard() {
   
   return (
     <WizardProvider>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <nav className="bg-white border-b border-gray-200/50">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+        <nav className="bg-white dark:bg-gray-900 border-b dark:border-gray-800/50 border-gray-200/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center">
@@ -122,6 +123,7 @@ export function WizardDashboard() {
                   <LogOut className="h-5 w-5 mr-1" />
                   Sign Out
                 </Button>
+                <HeaderThemeToggle />
               </div>
             </div>
           </div>

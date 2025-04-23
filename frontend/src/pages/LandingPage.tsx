@@ -1,31 +1,34 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, Zap, BarChart3, Wand2 } from 'lucide-react';
+import { Activity, Zap, BarChart3 } from 'lucide-react';
 import { Button } from '../components/Button';
+import { Footer } from '../components/Footer';
+import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white">
+    <div className="min-h-screen bg-white text-gray-900 dark:bg-gradient-to-b dark:from-gray-900 dark:to-gray-800 dark:text-white">
       <nav className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Zap className="h-8 w-8 text-blue-500" />
             <span className="text-xl font-bold">FastAPI Stress Tester</span>
           </div>
-          <div className="space-x-4">
+          <div className="flex items-center space-x-4">
             <Link to="/login">
               <Button variant="outline">Login</Button>
             </Link>
             <Link to="/register">
               <Button>Sign Up</Button>
             </Link>
+            <HeaderThemeToggle />
           </div>
         </div>
       </nav>
 
       <main className="container mx-auto px-6 py-16">
         <div className="text-center">
-          <h1 className="text-5xl font-bold mb-6">
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">
             Test Your FastAPI Applications
             <br />
             <span className="text-blue-500">With Confidence</span>
@@ -40,31 +43,25 @@ export function LandingPage() {
                 Get Started
               </Button>
             </Link>
-            <Link to="/wizard">
-              <Button size="lg" variant="outline" className="flex items-center">
-                <Wand2 className="h-5 w-5 mr-2" />
-                Try Step Wizard
-              </Button>
-            </Link>
           </div>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 mt-20">
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
             <Activity className="h-12 w-12 text-blue-500 mb-4" />
             <h3 className="text-xl font-semibold mb-2">Real-time Monitoring</h3>
             <p className="text-gray-400">
               Watch your API performance in real-time with detailed metrics and insights.
             </p>
           </div>
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
             <BarChart3 className="h-12 w-12 text-blue-500 mb-4" />
             <h3 className="text-xl font-semibold mb-2">Comprehensive Analytics</h3>
             <p className="text-gray-400">
               Get detailed reports and visualizations of your API's performance under load.
             </p>
           </div>
-          <div className="bg-gray-800 p-6 rounded-lg">
+          <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
             <Zap className="h-12 w-12 text-blue-500 mb-4" />
             <h3 className="text-xl font-semibold mb-2">Multiple Test Strategies</h3>
             <p className="text-gray-400">
@@ -73,6 +70,33 @@ export function LandingPage() {
           </div>
         </div>
       </main>
+      {/* Testimonials Section */}
+      <section className="bg-gray-50 dark:bg-gray-900 py-16">
+        <div className="container mx-auto px-6 text-center">
+          <h2 className="text-2xl md:text-3xl font-semibold mb-8">What developers are saying</h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+              <p className="text-gray-300 italic mb-4">
+                "This tool uncovered bottlenecks we never would have found in staging."
+              </p>
+              <span className="font-semibold text-white">— Alex P., Backend Lead</span>
+            </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+              <p className="text-gray-300 italic mb-4">
+                "The wizard made configuring complex load tests a breeze."
+              </p>
+              <span className="font-semibold text-white">— Maria L., DevOps Engineer</span>
+            </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+              <p className="text-gray-300 italic mb-4">
+                "Our API handled 10x traffic after optimizing with these insights."
+              </p>
+              <span className="font-semibold text-white">— Chen W., CTO</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <Footer />
     </div>
   );
 }
