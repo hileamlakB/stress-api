@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, Zap, BarChart3, Wand2 } from 'lucide-react';
 import { Button } from '../components/Button';
@@ -40,7 +39,7 @@ export function LandingPage() {
                 Get Started
               </Button>
             </Link>
-            <Link to="/wizard">
+            <Link to="/login">
               <Button size="lg" variant="outline" className="flex items-center">
                 <Wand2 className="h-5 w-5 mr-2" />
                 Try Step Wizard
