@@ -835,6 +835,68 @@ async def stop_advanced_test(test_id: str, db: Session = Depends(get_db)):
             detail=f"Error stopping advanced test: {str(e)}"
         )
 
+# Endpoint to get user sessions
+@app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
+async def get_user_sessions(email: str, db: Session = Depends(get_db)):
+    try:
+        # Get the user by email
+        user = get_user_by_email(db, email)
+        if not user:
+            # Return empty sessions list if user not found
+            return UserSessionsResponse(
+                user_id="",
+                email=email,
+                sessions=[]
+            )
+
+        # Get all sessions for the user
+        sessions = get_db_user_sessions(db, user.id)
+        
+        # Map database sessions to response model
+        session_models = []
+        for session in sessions:
+            # Get configurations for this session
+            configs = get_session_configs(db, session.id)
+            config_models = [
+                SessionConfigModel(
+                    id=str(config.id),
+                    session_id=str(config.session_id),
+                    endpoint_url=config.endpoint_url,
+                    http_method=config.http_method,
+                    request_headers=config.request_headers,
+                    request_body=config.request_body,
+                    request_params=config.request_params,
+                    concurrent_users=config.concurrent_users,
+                    ramp_up_time=config.ramp_up_time,
+                    test_duration=config.test_duration,
+                    think_time=config.think_time,
+                    success_criteria=config.success_criteria
+                )
+                for config in configs
+            ]
+            
+            session_models.append(SessionModel(
+                id=str(session.id),
+                name=session.name,
+                description=session.description,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+                configurations=config_models
+            ))
+        
+        return UserSessionsResponse(
+            user_id=str(user.id),
+            email=user.email,
+            sessions=session_models
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting user sessions: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting user sessions: {str(e)}"
+        )
+
 # New endpoint to get filtered test results
 @app.get("/api/test-results/filter", response_model=TestResultsResponse)
 async def get_filtered_test_results(

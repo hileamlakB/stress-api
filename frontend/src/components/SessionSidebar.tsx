@@ -100,10 +100,15 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
           </div>
         ) : error ? (
-          <div className="p-4 text-red-500 bg-red-50 m-3 rounded-md">{error}</div>
+          <div className="p-4 text-center">
+            <p className="text-red-500">{error}</p>
+          </div>
         ) : sessions.length === 0 ? (
-          <div className="p-4 text-gray-500 flex items-center justify-center h-20">
-            <p className="text-center">No sessions found</p>
+          <div className="flex flex-col items-center justify-center h-40 p-4">
+            <p className="text-gray-500 text-center mb-2">No saved sessions found</p>
+            <p className="text-sm text-gray-400 text-center">
+              Create a new session to get started
+            </p>
           </div>
         ) : (
           <ul className="py-2">

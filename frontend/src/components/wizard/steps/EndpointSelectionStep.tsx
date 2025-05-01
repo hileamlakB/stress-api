@@ -172,42 +172,49 @@ export function EndpointSelectionStep() {
         </div>
       </div>
       
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
-        <Button
-          onClick={fetchEndpoints}
-          disabled={isLoadingEndpoints || !baseUrl}
-          className="flex items-center"
-          size="sm"
-        >
-          {isLoadingEndpoints ? (
-            <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-1" />
-          )}
-          Fetch Endpoints
-        </Button>
+      <div className="flex justify-between items-center space-x-4 mb-6">
+        <div className="flex-1">
+          <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
+        </div>
+        <div className="flex items-center">
+          <Button
+            onClick={fetchEndpoints}
+            disabled={isLoadingEndpoints || !baseUrl}
+            className="inline-flex items-center justify-center min-w-[140px]"
+            size="sm"
+            variant="primary"
+          >
+            {isLoadingEndpoints ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Fetch Endpoints
+          </Button>
+        </div>
       </div>
       
       {endpoints.length > 0 && (
         <>
-          <div className="flex flex-col mb-4">
+          <div className="flex flex-col space-y-4 mb-4">
             {/* Filtering controls */}
-            <div className="flex mb-2 items-center">
-              <div className="relative flex-1">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Filter className="h-4 w-4 text-gray-400" />
+            <div className="flex flex-wrap gap-4 items-center">
+              <div className="flex-1 min-w-[300px]">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Filter className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={endpointFilter}
+                    onChange={(e) => setEndpointFilter(e.target.value)}
+                    placeholder="Filter endpoints (path, method, description)"
+                    className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={endpointFilter}
-                  onChange={(e) => setEndpointFilter(e.target.value)}
-                  placeholder="Filter endpoints (path, method, description)"
-                  className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
               </div>
-              <div className="ml-4 space-x-2">
-                <Button size="sm" onClick={handleSelectAllEndpoints}>
+              <div className="flex items-center gap-3">
+                <Button size="sm" variant="primary" onClick={handleSelectAllEndpoints}>
                   Select All
                 </Button>
                 <Button size="sm" variant="outline" onClick={handleClearSelection}>
@@ -217,9 +224,9 @@ export function EndpointSelectionStep() {
                   size="sm" 
                   variant="outline" 
                   onClick={() => setAdvancedFiltering(!advancedFiltering)}
-                  className="flex items-center"
+                  className="inline-flex items-center"
                 >
-                  <Filter className="h-4 w-4 mr-1" />
+                  <Filter className="h-4 w-4 mr-2" />
                   {advancedFiltering ? 'Hide Filters' : 'More Filters'}
                 </Button>
               </div>
@@ -227,16 +234,16 @@ export function EndpointSelectionStep() {
 
             {/* Advanced filtering options */}
             {advancedFiltering && (
-              <div className="flex items-center mt-2 mb-2 space-x-4">
-                <div className="flex items-center">
-                  <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 mr-2">
+              <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-md">
+                <div className="flex items-center min-w-[200px]">
+                  <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 mr-3">
                     Method:
                   </label>
                   <select
                     id="methodFilter"
                     value={filterByMethod}
                     onChange={(e) => setFilterByMethod(e.target.value)}
-                    className="text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1 px-2"
+                    className="flex-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1.5 px-3"
                   >
                     {availableMethods.map(method => (
                       <option key={method} value={method}>
@@ -245,7 +252,7 @@ export function EndpointSelectionStep() {
                     ))}
                   </select>
                 </div>
-                <div className="flex items-center ml-4">
+                <div className="flex items-center">
                   <span className="text-sm text-gray-500">
                     Found {filteredEndpoints.length} of {endpoints.length} endpoints
                   </span>
