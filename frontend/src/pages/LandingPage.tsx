@@ -39,6 +39,7 @@ export function LandingPage() {
                 Get Started
               </Button>
             </Link>
+            {/* the line below is where the bug fix was implemented for TUNE-50 */}
             <Link to="/login">
               <Button size="lg" variant="outline" className="flex items-center">
                 <Wand2 className="h-5 w-5 mr-2" />
