@@ -68,6 +68,10 @@ Your FastAPI application should:
    ```bash
    npm run dev
    ```
+5. Run unittests:
+   ```bash
+   npm test
+   ```
 
 ## Usage
 
