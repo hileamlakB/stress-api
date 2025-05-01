@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Zap, Settings, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2 } from 'lucide-react';
+import { Zap, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2, Settings } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -518,15 +518,7 @@ export function Dashboard() {
                   Switch to Wizard
                 </Button>
               </RouterLink>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {}}
-                className="flex items-center"
-              >
-                <Settings className="h-5 w-5 mr-1" />
-                Settings
-              </Button>
+              {/* Settings button removed - TUNE-52 */}
               <Button
                 variant="outline"
                 size="sm"

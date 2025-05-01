@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Zap, Settings, LogOut, LayoutDashboard } from 'lucide-react';
+import { Zap, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '../components/Button';
 import { StepWizard } from '../components/wizard/StepWizard';
 import { WizardProvider } from '../components/wizard/WizardContext';
@@ -104,15 +104,7 @@ export function WizardDashboard() {
                     Classic Dashboard
                   </Button>
                 </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {}}
-                  className="flex items-center"
-                >
-                  <Settings className="h-5 w-5 mr-1" />
-                  Settings
-                </Button>
+                {/* Settings button removed - TUNE-52 */}
                 <Button
                   variant="outline"
                   size="sm"
