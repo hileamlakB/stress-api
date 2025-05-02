@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Zap, Settings, LogOut } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Zap, LogOut, LayoutDashboard } from 'lucide-react';
 import { Button } from '../components/Button';
 import { StepWizard } from '../components/wizard/StepWizard';
 import { WizardProvider } from '../components/wizard/WizardContext';
@@ -17,7 +17,7 @@ import { Footer } from '../components/Footer';
 export function WizardDashboard() {
   const navigate = useNavigate();
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(undefined);
   
   useEffect(() => {
     checkAuth();
@@ -96,16 +96,17 @@ export function WizardDashboard() {
                 <Zap className="h-8 w-8 text-blue-500" />
                 <span className="ml-2 text-xl font-bold">FastAPI Stress Tester</span>
               </div>
-              <div className="flex items-center space-x-5 pr-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {}}
-                  className="flex items-center bg-transparent text-gray-300 hover:text-white border-gray-600 hover:border-gray-500"
-                >
-                  <Settings className="h-5 w-5 mr-1" />
-                  Settings
-                </Button>
+              <div className="flex items-center space-x-4">
+                <Link to="/dashboard">
+                  <Button
+                    size="sm"
+                    className="flex items-center"
+                  >
+                    <LayoutDashboard className="h-5 w-5 mr-1" />
+                    Classic Dashboard
+                  </Button>
+                </Link>
+                {/* Settings button removed - TUNE-52 */}
                 <Button
                   variant="outline"
                   size="sm"
