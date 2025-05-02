@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, Folder } from 'lucide-react';
 import ApiService from '../services/ApiService';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Define types for session data
 export interface SessionConfig {
@@ -47,6 +48,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     const fetchSessions = async () => {
@@ -86,84 +88,51 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   }, [onSessionSelect, selectedSessionId, userEmail]);
 
   return (
-    <div className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shadow-sm">
-      <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-        <h2 className="text-lg font-semibold text-gray-800 flex items-center">
-          <Folder size={18} className="mr-2 text-blue-600" />
-          Sessions
-        </h2>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-20">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-          </div>
-        ) : error ? (
-          <div className="p-4 text-center">
-            <p className="text-red-500">{error}</p>
-          </div>
-        ) : sessions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 p-4">
-            <p className="text-gray-500 text-center mb-2">No saved sessions found</p>
-            <p className="text-sm text-gray-400 text-center">
-              Create a new session to get started
-            </p>
-          </div>
-        ) : (
-          <ul className="py-2">
-            {sessions.map((session) => {
-              const isSelected = selectedSessionId === session.id;
-              return (
-                <li key={session.id} className="px-2 py-1">
-                  <button
-                    onClick={() => onSessionSelect(session)}
-                    className={`w-full text-left px-3 py-2.5 flex items-center space-x-3 rounded-lg transition-all duration-200 ${
-                      isSelected
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'hover:bg-gray-50 text-gray-700'
-                    }`}
-                  >
-                    <div className={`p-1.5 rounded-md ${isSelected ? 'bg-blue-500' : 'bg-gray-100'}`}>
-                      <Folder 
-                        size={16} 
-                        className={isSelected ? 'text-white' : 'text-gray-500'} 
-                      />
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <p className={`truncate font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                        {session.name}
-                      </p>
-                      <p className="text-xs truncate mt-0.5" style={{ 
-                        color: isSelected ? 'rgba(255, 255, 255, 0.8)' : 'rgba(107, 114, 128, 0.8)' 
-                      }}>
-                        ID: {session.id}
-                      </p>
-                    </div>
-                    <ChevronRight 
-                      size={16} 
-                      className={`transition-all duration-200 ${
-                        isSelected ? 'opacity-100 text-white' : 'opacity-0 -translate-x-2'
-                      }`} 
-                    />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+    <div className={`w-64 h-screen overflow-y-auto border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800`}>
+      <div className={`p-4 border-b border-gray-200 dark:border-gray-700`}>
+        <h2 className={`text-lg font-semibold text-gray-800 dark:text-gray-100`}>Sessions</h2>
+        {userEmail && (
+          <p className={`text-sm text-gray-600 dark:text-gray-400 mt-1`}>{userEmail}</p>
         )}
       </div>
-      
-      <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
-        <p>
-          {sessions.length} session{sessions.length !== 1 ? 's' : ''} available
-        </p>
-        {!loading && !error && sessions.length > 0 && (
-          <span className="text-blue-600 text-xs">
-            {selectedSessionId ? '1 selected' : 'None selected'}
-          </span>
-        )}
-      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600 dark:border-gray-400" />
+        </div>
+      ) : error ? (
+        <div className={`p-4 text-red-600 dark:text-red-400`}>{error}</div>
+      ) : sessions.length === 0 ? (
+        <div className={`p-4 text-gray-600 dark:text-gray-400`}>No sessions found</div>
+      ) : (
+        <div className="space-y-1">
+          {sessions.map((session) => (
+            <button
+              key={session.id}
+              onClick={() => onSessionSelect(session)}
+              className={`w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                selectedSessionId === session.id
+                  ? 'bg-gray-100 dark:bg-gray-700 text-indigo-600 dark:text-indigo-400'
+                  : 'text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <Folder className={`h-4 w-4 mr-2 ${
+                  selectedSessionId === session.id
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`} />
+                <span className="truncate">{session.name || 'Untitled Session'}</span>
+              </div>
+              {session.description && (
+                <p className={`text-sm text-gray-500 dark:text-gray-400 mt-1 truncate`}>
+                  {session.description}
+                </p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

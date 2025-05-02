@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { RefreshCw, Filter, Link } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
+import { useTheme } from '../../../contexts/ThemeContext';
 import apiService from '../../../services/ApiService';
 
 export function EndpointSelectionStep() {
@@ -12,6 +13,7 @@ export function EndpointSelectionStep() {
     selectedEndpoints,
     setSelectedEndpoints
   } = useWizard();
+  const { isDarkMode } = useTheme();
 
   const [isLoadingEndpoints, setIsLoadingEndpoints] = useState(false);
   const [endpointFilter, setEndpointFilter] = useState('');
@@ -162,213 +164,205 @@ export function EndpointSelectionStep() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+      {/* Info Message */}
+      <div className={`bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-400 dark:border-blue-500 p-4`}>
         <div className="flex">
           <div className="ml-3">
-            <p className="text-sm text-blue-700">
+            <p className={`text-sm text-blue-700 dark:text-blue-200`}>
               Now, fetch the available endpoints from your API and select which ones you want to include in your stress test.
             </p>
           </div>
         </div>
       </div>
-      
-      <div className="flex justify-between items-center space-x-4 mb-6">
-        <div className="flex-1">
-          <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
-        </div>
-        <div className="flex items-center">
-          <Button
-            onClick={fetchEndpoints}
-            disabled={isLoadingEndpoints || !baseUrl}
-            className="inline-flex items-center justify-center min-w-[140px]"
-            size="sm"
-            variant="primary"
-          >
-            {isLoadingEndpoints ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Fetch Endpoints
-          </Button>
-        </div>
-      </div>
-      
-      {endpoints.length > 0 && (
-        <>
-          <div className="flex flex-col space-y-4 mb-4">
-            {/* Filtering controls */}
-            <div className="flex flex-wrap gap-4 items-center">
-              <div className="flex-1 min-w-[300px]">
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Filter className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    value={endpointFilter}
-                    onChange={(e) => setEndpointFilter(e.target.value)}
-                    placeholder="Filter endpoints (path, method, description)"
-                    className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button size="sm" variant="primary" onClick={handleSelectAllEndpoints}>
-                  Select All
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleClearSelection}>
-                  Clear Selection
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => setAdvancedFiltering(!advancedFiltering)}
-                  className="inline-flex items-center"
-                >
-                  <Filter className="h-4 w-4 mr-2" />
-                  {advancedFiltering ? 'Hide Filters' : 'More Filters'}
-                </Button>
-              </div>
-            </div>
 
-            {/* Advanced filtering options */}
-            {advancedFiltering && (
-              <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-md">
-                <div className="flex items-center min-w-[200px]">
-                  <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 mr-3">
-                    Method:
-                  </label>
-                  <select
-                    id="methodFilter"
-                    value={filterByMethod}
-                    onChange={(e) => setFilterByMethod(e.target.value)}
-                    className="flex-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1.5 px-3"
-                  >
-                    {availableMethods.map(method => (
-                      <option key={method} value={method}>
-                        {method === 'all' ? 'All Methods' : method}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center">
-                  <span className="text-sm text-gray-500">
-                    Found {filteredEndpoints.length} of {endpoints.length} endpoints
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Endpoint grouping tabs */}
-            <div className="flex overflow-x-auto space-x-1 pt-3 pb-2 border-b border-gray-200">
-              {availableTabs.map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${
-                    activeTab === tab
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {tab === 'all' ? 'All Endpoints' : `/${tab}`}
-                  <span className="ml-1 text-xs text-gray-500">
-                    ({tab === 'all' ? endpoints.length : (endpointGroups[tab]?.length || 0)})
-                  </span>
-                </button>
-              ))}
-            </div>
+      {/* Endpoint Selection Area */}
+      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow`}>
+        <div className={`p-4 border-b border-gray-200 dark:border-gray-700`}>
+          <div className="flex justify-between items-center">
+            <h3 className={`text-lg font-medium text-gray-900 dark:text-gray-100`}>Available Endpoints</h3>
+            <Button
+              onClick={fetchEndpoints}
+              disabled={isLoadingEndpoints || !baseUrl}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingEndpoints ? 'animate-spin' : ''}`} />
+              {isLoadingEndpoints ? 'Fetching...' : 'Fetch Endpoints'}
+            </Button>
           </div>
+        </div>
 
-          <div className="mt-3 border border-gray-200 rounded-md overflow-hidden">
-            <div className="flex bg-gray-100 px-4 py-2 border-b border-gray-200">
-              <div className="w-8"></div>
-              <div className="w-16 text-xs font-medium text-gray-500">METHOD</div>
-              <div className="flex-1 text-xs font-medium text-gray-500">ENDPOINT</div>
-              <div className="w-24 text-xs font-medium text-gray-500">DETAILS</div>
-            </div>
-            
-            <div className="max-h-64 overflow-y-auto">
-              {filteredEndpoints.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-gray-600">
-                  No endpoints match your filter
+        {endpoints.length > 0 ? (
+          <div className="p-4">
+            {/* Search and Filter Bar */}
+            <div className="mb-4">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Filter className={`h-4 w-4 text-gray-400 dark:text-gray-500`} />
                 </div>
-              ) : (
-                filteredEndpoints.map((endpoint, index) => {
-                  const endpointKey = `${endpoint.method} ${endpoint.path}`;
-                  const isSelected = selectedEndpoints.includes(endpointKey);
-                  
-                  return (
-                    <div 
-                      key={index}
-                      onClick={() => handleToggleEndpoint(endpoint)}
-                      className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
-                        index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
+                <input
+                  type="text"
+                  value={endpointFilter}
+                  onChange={(e) => setEndpointFilter(e.target.value)}
+                  placeholder="Filter endpoints..."
+                  className={`w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400`}
+                />
+              </div>
+              
+              {/* Advanced Filtering Toggle */}
+              <div className="mt-2 flex items-center">
+                <input
+                  type="checkbox"
+                  id="advancedFiltering"
+                  checked={advancedFiltering}
+                  onChange={() => setAdvancedFiltering(!advancedFiltering)}
+                  className={`h-4 w-4 text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500 dark:focus:ring-indigo-400 border-gray-300 dark:border-gray-600 rounded`}
+                />
+                <label htmlFor="advancedFiltering" className={`ml-2 text-sm text-gray-700 dark:text-gray-300`}>
+                  Show advanced filtering options
+                </label>
+              </div>
+
+              {/* Advanced Filtering Options */}
+              {advancedFiltering && (
+                <div className="mt-3 flex items-center space-x-4">
+                  <div>
+                    <label htmlFor="methodFilter" className={`block text-sm font-medium text-gray-700 dark:text-gray-300`}>
+                      HTTP Method:
+                    </label>
+                    <select
+                      id="methodFilter"
+                      value={filterByMethod}
+                      onChange={(e) => setFilterByMethod(e.target.value)}
+                      className={`mt-1 block w-full pl-3 pr-10 py-2 text-base border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 sm:text-sm rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
                     >
-                      <div className="w-8">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                        />
-                      </div>
-                      <div className="w-16">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                          endpoint.method === 'GET' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : endpoint.method === 'POST'
-                            ? 'bg-green-100 text-green-800'
-                            : endpoint.method === 'PUT'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : endpoint.method === 'DELETE'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {endpoint.method}
-                        </span>
-                      </div>
-                      <div className="flex-1 text-sm text-gray-700">
-                        {endpoint.path}
-                      </div>
-                      <div className="w-24 text-xs text-gray-500 truncate">
-                        {endpoint.summary || endpoint.description || '-'}
-                      </div>
-                    </div>
-                  );
-                })
+                      <option value="all">All Methods</option>
+                      {Array.from(availableMethods).map(method => (
+                        <option key={method} value={method}>{method}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               )}
             </div>
+
+            {/* Endpoint Groups Tabs */}
+            <div className={`border-b border-gray-200 dark:border-gray-700`}>
+              <nav className="-mb-px flex space-x-4">
+                {availableTabs.map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`whitespace-nowrap py-2 px-3 border-b-2 text-sm font-medium ${
+                      activeTab === tab
+                        ? 'border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    {tab === 'all' ? 'All' : `/${tab}`}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {/* Endpoints List */}
+            <div className="mt-4">
+              <div className={`border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden`}>
+                <div className={`bg-gray-50 dark:bg-gray-900 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider`}>
+                  <div className="grid grid-cols-12 gap-4">
+                    <div className="col-span-1"></div>
+                    <div className="col-span-2">Method</div>
+                    <div className="col-span-6">Path</div>
+                    <div className="col-span-3">Description</div>
+                  </div>
+                </div>
+
+                <div className={`divide-y divide-gray-200 dark:divide-gray-700`}>
+                  {filteredEndpoints.map((endpoint, index) => (
+                    <div
+                      key={`${endpoint.method}-${endpoint.path}`}
+                      className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                        selectedEndpoints.includes(endpoint)
+                          ? 'bg-indigo-50 dark:bg-indigo-900'
+                          : ''
+                      }`}
+                    >
+                      <div className="grid grid-cols-12 gap-4 items-center">
+                        <div className="col-span-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedEndpoints.includes(endpoint)}
+                            onChange={() => handleToggleEndpoint(endpoint)}
+                            className={`h-4 w-4 text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500 dark:focus:ring-indigo-400 border-gray-300 dark:border-gray-600 rounded`}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                            endpoint.method === 'GET'
+                              ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                              : endpoint.method === 'POST'
+                              ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                              : endpoint.method === 'PUT'
+                              ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                              : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
+                          }`}>
+                            {endpoint.method}
+                          </span>
+                        </div>
+                        <div className="col-span-6 text-sm text-gray-900 dark:text-gray-100">
+                          {endpoint.path}
+                        </div>
+                        <div className="col-span-3 text-sm text-gray-500 dark:text-gray-400">
+                          {endpoint.description || '-'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selection Summary */}
+            <div className="mt-4 flex justify-between items-center">
+              <p className={`text-sm text-gray-500 dark:text-gray-400`}>
+                Selected {selectedEndpoints.length} of {endpoints.length} endpoints
+              </p>
+              <div className="space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={handleSelectAllEndpoints}
+                  className="text-sm"
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearSelection}
+                  className="text-sm"
+                >
+                  Deselect All
+                </Button>
+              </div>
+            </div>
           </div>
-          
-          <div className="mt-2 text-sm text-gray-500">
-            {selectedEndpoints.length > 0 ? 
-              `Selected ${selectedEndpoints.length} endpoint${selectedEndpoints.length === 1 ? '' : 's'}` : 
-              'No endpoints selected yet. Please select at least one endpoint to continue.'}
+        ) : (
+          <div className="p-8 text-center">
+            {isLoadingEndpoints ? (
+              <div className="flex flex-col items-center">
+                <RefreshCw className="h-8 w-8 text-gray-400 dark:text-gray-500 animate-spin" />
+                <p className={`mt-2 text-gray-500 dark:text-gray-400`}>Loading endpoints...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center">
+                <Link className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+                <h3 className={`mt-2 text-sm font-medium text-gray-900 dark:text-gray-100`}>No endpoints found</h3>
+                <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                  Click "Fetch Endpoints" to load available endpoints from your API
+                </p>
+              </div>
+            )}
           </div>
-        </>
-      )}
-      
-      {!endpoints.length && !isLoadingEndpoints && (
-        <div className="border border-gray-200 rounded-md p-8 flex flex-col items-center justify-center text-center">
-          <Link className="h-12 w-12 text-gray-400 mb-2" />
-          <h4 className="text-gray-900 font-medium mb-1">No Endpoints Available</h4>
-          <p className="text-gray-500 text-sm mb-4">
-            Enter a FastAPI base URL and click "Fetch Endpoints" to get started
-          </p>
-        </div>
-      )}
-      
-      {isLoadingEndpoints && (
-        <div className="flex justify-center items-center h-64">
-          <div className="flex flex-col items-center">
-            <RefreshCw className="h-10 w-10 text-indigo-600 animate-spin" />
-            <p className="mt-4 text-gray-600">Loading endpoints...</p>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
-} 
+}

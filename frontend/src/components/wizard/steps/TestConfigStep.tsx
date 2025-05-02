@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Minus, Check } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
+import { useTheme } from '../../../contexts/ThemeContext';
 import apiService from '../../../services/ApiService';
 
 export function TestConfigStep() {
@@ -16,12 +17,11 @@ export function TestConfigStep() {
     setStrategyOptions,
     selectedEndpoints
   } = useWizard();
+  const { isDarkMode } = useTheme();
   
-  // State for loading distribution strategies from API
   const [availableStrategies, setAvailableStrategies] = useState<string[]>([]);
   const [isLoadingStrategies, setIsLoadingStrategies] = useState(false);
   
-  // Fetch distribution strategies when the component mounts
   useEffect(() => {
     fetchDistributionStrategies();
   }, []);
@@ -45,366 +45,165 @@ export function TestConfigStep() {
     }
   };
   
+  const handleConcurrentChange = (delta: number) => {
+    setConcurrentRequests(Math.max(1, concurrentRequests + delta));
+  };
+  
+  const handleStrategyOptionChange = (key: string, value: number) => {
+    setStrategyOptions(prevOptions => ({
+      ...prevOptions,
+      [key]: value
+    }));
+  };
+  
   return (
     <div className="space-y-6">
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+      <div className={`bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-400 dark:border-blue-500 p-4 mb-6`}>
         <div className="flex">
           <div className="ml-3">
-            <p className="text-sm text-blue-700">
-              Configure how your stress test will run. Adjust concurrent requests and choose a distribution strategy 
-              for how requests will be sent to your endpoints.
+            <p className={`text-sm text-blue-700 dark:text-blue-200`}>
+              Configure how the load test will be executed. Set the number of concurrent users and choose distribution strategies.
             </p>
           </div>
         </div>
       </div>
-      
-      <div>
-        <div className="flex justify-between items-center mb-2">
-          <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700">
-            Maximum Concurrent Requests
-          </label>
-          <span className="text-sm text-gray-500">{concurrentRequests}</span>
-        </div>
-        <input
-          id="concurrentRequests"
-          type="range"
-          min="1"
-          max="50"
-          value={concurrentRequests}
-          onChange={(e) => setConcurrentRequests(parseInt(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Controls how many requests will run simultaneously. Higher values create more server load.
-        </p>
-      </div>
-      
-      <div>
-        <h4 className="text-sm font-medium text-gray-700 mb-3">Distribution Strategy</h4>
-        <p className="text-sm text-gray-600 mb-3">
-          Select how requests should be distributed across your endpoints. Each strategy creates different load patterns.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {isLoadingStrategies ? (
-            <div className="col-span-3 py-4 text-center text-sm text-gray-500">
-              Loading distribution strategies...
-            </div>
-          ) : availableStrategies.length === 0 ? (
-            <div className="col-span-3 py-4 text-center text-sm text-gray-500">
-              No distribution strategies available.
-            </div>
-          ) : (
-            availableStrategies.map((strategy) => (
-              <div
-                key={strategy}
-                onClick={() => setDistributionMode(strategy)}
-                className={`border ${
-                  distributionMode === strategy 
-                    ? 'border-indigo-500 bg-indigo-50' 
-                    : 'border-gray-200 hover:bg-gray-50'
-                } rounded-lg p-3 cursor-pointer transition-colors`}
-              >
-                <div className="flex items-center mb-1">
-                  <input
-                    type="radio"
-                    checked={distributionMode === strategy}
-                    readOnly
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm font-medium text-gray-900 ml-2">
-                    {strategy === 'sequential' && 'Sequential testing'}
-                    {strategy === 'interleaved' && 'Interleaved testing'}
-                    {strategy === 'random' && 'Random distribution'}
-                    {!['sequential', 'interleaved', 'random'].includes(strategy) && 
-                      strategy.charAt(0).toUpperCase() + strategy.slice(1)}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500">
-                  {strategy === 'sequential' && 'Requests are sent one after another in order'}
-                  {strategy === 'interleaved' && 'Requests are distributed evenly across endpoints'}
-                  {strategy === 'random' && 'Requests are sent randomly to selected endpoints'}
-                  {!['sequential', 'interleaved', 'random'].includes(strategy) && 
-                    `Custom distribution strategy: ${strategy}`}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-      
-      {/* Advanced options toggle */}
-      <div className="flex items-center">
-        <input
-          id="showAdvancedOptions"
-          type="checkbox"
-          checked={showAdvancedOptions}
-          onChange={() => setShowAdvancedOptions(!showAdvancedOptions)}
-          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-        />
-        <label htmlFor="showAdvancedOptions" className="ml-2 block text-sm text-gray-700">
-          Show advanced distribution options
-        </label>
-      </div>
-      <p className="text-xs text-gray-500 mt-1 ml-6">
-        Advanced options allow fine-tuning of request timing, distribution percentages, and randomization parameters.
-      </p>
-      
-      {/* Strategy-specific options */}
-      {showAdvancedOptions && distributionMode === 'sequential' && (
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Sequential Options</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            Configure how sequential requests are executed, including delays between requests and repetition count.
-          </p>
-          <div className="space-y-2">
+
+      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow`}>
+        {/* Basic Configuration */}
+        <div className={`p-6 border-b border-gray-200 dark:border-gray-700`}>
+          <h3 className={`text-lg font-medium text-gray-900 dark:text-gray-100 mb-4`}>Basic Configuration</h3>
+          
+          {/* Concurrent Users */}
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Delay between requests (ms)
+              <label className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2`}>
+                Concurrent Users
               </label>
-              <input
-                type="number"
-                value={strategyOptions[distributionMode].sequential_delay}
-                onChange={(e) => {
-                  setStrategyOptions(prevOptions => ({
-                    ...prevOptions,
-                    [distributionMode]: {
-                      ...prevOptions[distributionMode],
-                      sequential_delay: parseInt(e.target.value, 10)
-                    }
-                  }));
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Repeat count
-              </label>
-              <input
-                type="number"
-                value={strategyOptions[distributionMode].sequential_repeat}
-                onChange={(e) => {
-                  setStrategyOptions(prevOptions => ({
-                    ...prevOptions,
-                    [distributionMode]: {
-                      ...prevOptions[distributionMode],
-                      sequential_repeat: parseInt(e.target.value, 10)
-                    }
-                  }));
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {showAdvancedOptions && distributionMode === 'interleaved' && (
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Endpoint Distribution</h4>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-sm text-gray-700 mb-4">
-              Set the percentage of requests for each endpoint. Total must equal 100%.
-            </p>
-            {selectedEndpoints.length > 0 && (
-              <div className="space-y-4">
-                {selectedEndpoints.map((endpoint, index) => {
-                  const currentValue = strategyOptions[distributionMode]?.endpoint_distribution[endpoint] || 
-                    Math.floor(100 / selectedEndpoints.length);
-                  
-                  return (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className="w-32 flex-shrink-0">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                          endpoint.split(' ')[0] === 'GET' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {endpoint.split(' ')[0]}
-                        </span>
-                      </div>
-                      <div className="flex-grow text-sm truncate" title={endpoint.split(' ')[1]}>
-                        {endpoint.split(' ')[1]}
-                      </div>
-                      <div className="flex items-center">
-                        <button
-                          onClick={() => {
-                            const newValue = Math.max(0, currentValue - 1);
-                            setStrategyOptions(prevOptions => ({
-                              ...prevOptions,
-                              [distributionMode]: {
-                                ...prevOptions[distributionMode],
-                                endpoint_distribution: {
-                                  ...prevOptions[distributionMode].endpoint_distribution,
-                                  [endpoint]: newValue
-                                }
-                              }
-                            }));
-                          }}
-                          className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <input 
-                          type="number"
-                          value={currentValue}
-                          onChange={(e) => {
-                            const newValue = parseInt(e.target.value, 10);
-                            if (!isNaN(newValue) && newValue >= 0) {
-                              setStrategyOptions(prevOptions => ({
-                                ...prevOptions,
-                                [distributionMode]: {
-                                  ...prevOptions[distributionMode],
-                                  endpoint_distribution: {
-                                    ...prevOptions[distributionMode].endpoint_distribution,
-                                    [endpoint]: newValue
-                                  }
-                                }
-                              }));
-                            }
-                          }}
-                          className="w-14 p-1 mx-1 text-center border border-gray-300 rounded-md"
-                        />
-                        <button
-                          onClick={() => {
-                            const newValue = currentValue + 1;
-                            setStrategyOptions(prevOptions => ({
-                              ...prevOptions,
-                              [distributionMode]: {
-                                ...prevOptions[distributionMode],
-                                endpoint_distribution: {
-                                  ...prevOptions[distributionMode].endpoint_distribution,
-                                  [endpoint]: newValue
-                                }
-                              }
-                            }));
-                          }}
-                          className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                
-                {/* Display total distribution percentage */}
-                <div className="border-t border-gray-200 pt-3 mt-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Total distribution:</span>
-                    <span className={`text-sm font-medium ${
-                      Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
-                        .map(Number)
-                        .reduce((sum, val) => sum + val, 0) === 100
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    }`}>
-                      {Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
-                        .map(Number)
-                        .reduce((sum, val) => sum + val, 0)}% 
-                      {Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
-                        .map(Number)
-                        .reduce((sum, val) => sum + val, 0) === 100 && 
-                        <Check className="inline ml-1 h-4 w-4" />}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Even distribution button */}
-                <div className="mt-3">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const evenValue = Math.floor(100 / selectedEndpoints.length);
-                      const remainder = 100 % selectedEndpoints.length;
-                      
-                      const newDistribution = selectedEndpoints.reduce((acc, endpoint, index) => {
-                        acc[endpoint] = evenValue + (index < remainder ? 1 : 0);
-                        return acc;
-                      }, {} as Record<string, number>);
-                      
-                      setStrategyOptions(prevOptions => ({
-                        ...prevOptions,
-                        [distributionMode]: {
-                          ...prevOptions[distributionMode],
-                          endpoint_distribution: newDistribution
-                        }
-                      }));
-                    }}
-                  >
-                    Set Even Distribution
-                  </Button>
-                </div>
+              <div className="flex items-center space-x-4">
+                <Button
+                  onClick={() => handleConcurrentChange(-10)}
+                  disabled={concurrentRequests <= 10}
+                  className="p-2"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <input
+                  type="number"
+                  value={concurrentRequests}
+                  onChange={(e) => setConcurrentRequests(parseInt(e.target.value) || 1)}
+                  min="1"
+                  className={`block w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
+                />
+                <Button
+                  onClick={() => handleConcurrentChange(10)}
+                  className="p-2"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-            )}
-            
-            {selectedEndpoints.length === 0 && (
-              <div className="text-center p-4">
-                <p className="text-sm text-gray-500">
-                  Select endpoints to configure distribution percentages
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {showAdvancedOptions && distributionMode === 'random' && (
-        <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Random Options</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            Configure randomization parameters to control how requests are distributed across endpoints.
-          </p>
-          <div className="space-y-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Seed (optional)
-              </label>
-              <input
-                type="number"
-                value={strategyOptions[distributionMode].random_seed || ''}
-                onChange={(e) => {
-                  const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                  setStrategyOptions(prevOptions => ({
-                    ...prevOptions,
-                    [distributionMode]: {
-                      ...prevOptions[distributionMode],
-                      random_seed: value
-                    }
-                  }));
-                }}
-                placeholder="Random seed for reproducibility"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                Number of simultaneous users that will make requests to your API
+              </p>
             </div>
+
+            {/* Distribution Strategy */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Distribution pattern
+              <label className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2`}>
+                Distribution Strategy
               </label>
               <select
-                value={strategyOptions[distributionMode].random_distribution_pattern}
-                onChange={(e) => {
-                  setStrategyOptions(prevOptions => ({
-                    ...prevOptions,
-                    [distributionMode]: {
-                      ...prevOptions[distributionMode],
-                      random_distribution_pattern: e.target.value
-                    }
-                  }));
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={distributionMode}
+                onChange={(e) => setDistributionMode(e.target.value)}
+                className={`block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
               >
-                <option value="uniform">Uniform (equal probability)</option>
-                <option value="weighted">Weighted (by endpoint weight)</option>
-                <option value="gaussian">Gaussian (normal distribution)</option>
+                {isLoadingStrategies ? (
+                  <option>Loading strategies...</option>
+                ) : (
+                  availableStrategies.map(strategy => (
+                    <option key={strategy} value={strategy}>
+                      {strategy.charAt(0).toUpperCase() + strategy.slice(1)}
+                    </option>
+                  ))
+                )}
               </select>
+              <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                How requests will be distributed across endpoints
+              </p>
             </div>
           </div>
         </div>
-      )}
+
+        {/* Advanced Options Toggle */}
+        <div className={`px-6 py-4 bg-gray-50 dark:bg-gray-900`}>
+          <button
+            onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+            className={`flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200`}
+          >
+            <Check className={`h-4 w-4 mr-2 ${showAdvancedOptions ? 'text-indigo-500 dark:text-indigo-400' : ''}`} />
+            Advanced Options
+          </button>
+        </div>
+
+        {/* Advanced Options */}
+        {showAdvancedOptions && (
+          <div className={`p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900`}>
+            <h4 className={`text-sm font-medium text-gray-900 dark:text-gray-100 mb-4`}>Advanced Configuration</h4>
+            
+            <div className="space-y-4">
+              {/* Ramp Up Time */}
+              <div>
+                <label className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2`}>
+                  Ramp Up Time (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={strategyOptions.rampUpTime}
+                  onChange={(e) => handleStrategyOptionChange('rampUpTime', parseInt(e.target.value))}
+                  min="0"
+                  className={`block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
+                />
+                <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                  Time to gradually increase load to target concurrent users
+                </p>
+              </div>
+
+              {/* Hold Time */}
+              <div>
+                <label className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2`}>
+                  Hold Time (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={strategyOptions.holdTime}
+                  onChange={(e) => handleStrategyOptionChange('holdTime', parseInt(e.target.value))}
+                  min="0"
+                  className={`block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
+                />
+                <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                  Duration to maintain target concurrent users
+                </p>
+              </div>
+
+              {/* Think Time */}
+              <div>
+                <label className={`block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2`}>
+                  Think Time (milliseconds)
+                </label>
+                <input
+                  type="number"
+                  value={strategyOptions.thinkTime}
+                  onChange={(e) => handleStrategyOptionChange('thinkTime', parseInt(e.target.value))}
+                  min="0"
+                  className={`block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100`}
+                />
+                <p className={`mt-1 text-sm text-gray-500 dark:text-gray-400`}>
+                  Delay between consecutive requests from the same user
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-// Import statement added to the top to fix the missing useState
-import { useState } from 'react'; 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Zap, LogOut, LayoutDashboard } from 'lucide-react';
+import { Zap, LogOut, LayoutDashboard, Moon, Sun } from 'lucide-react';
 import { Button } from '../components/Button';
 import { StepWizard } from '../components/wizard/StepWizard';
 import { WizardProvider } from '../components/wizard/WizardContext';
@@ -11,11 +11,13 @@ import { ReviewLaunchStep } from '../components/wizard/steps/ReviewLaunchStep';
 import { ResultsStep } from '../components/wizard/steps/ResultsStep';
 import { SessionSidebar } from '../components/SessionSidebar';
 import { signOut, getCurrentUser } from '../lib/auth';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function WizardDashboard() {
   const navigate = useNavigate();
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const { isDarkMode, toggleDarkMode } = useTheme();
   
   useEffect(() => {
     checkAuth();
@@ -86,32 +88,41 @@ export function WizardDashboard() {
   
   return (
     <WizardProvider>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <nav className="bg-white border-b border-gray-200/50">
+      <div className="min-h-screen bg-white dark:bg-gray-900">
+        {/* Navigation Bar */}
+        <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center">
-                <Zap className="h-8 w-8 text-indigo-600" />
-                <span className="ml-2 text-xl font-semibold">FastAPI Stress Tester 🚀</span>
+                <Zap className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
+                <span className="ml-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
+                  FastAPI Stress Tester
+                </span>
               </div>
               <div className="flex items-center space-x-4">
                 <Link to="/dashboard">
-                  <Button
-                    size="sm"
-                    className="flex items-center"
-                  >
-                    <LayoutDashboard className="h-5 w-5 mr-1" />
-                    Classic Dashboard
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>Classic View</span>
                   </Button>
                 </Link>
-                {/* Settings button removed - TUNE-52 */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSignOut}
-                  className="flex items-center"
+                <button
+                  onClick={toggleDarkMode}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  aria-label="Toggle dark mode"
                 >
-                  <LogOut className="h-5 w-5 mr-1" />
+                  {isDarkMode ? (
+                    <Sun className="w-5 h-5 text-yellow-500" />
+                  ) : (
+                    <Moon className="w-5 h-5 text-gray-600" />
+                  )}
+                </button>
+                <Button
+                  variant="ghost"
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
                   Sign Out
                 </Button>
               </div>
@@ -119,27 +130,24 @@ export function WizardDashboard() {
           </div>
         </nav>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-screen">
           {/* Session Sidebar */}
-          <SessionSidebar 
+          <SessionSidebar
             onSessionSelect={handleSessionSelect}
             selectedSessionId={selectedSessionId}
             userEmail={currentUserEmail}
           />
 
-          {/* Main content area */}
-          <main className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-5xl mx-auto">
-              <div className="bg-white shadow-sm rounded-lg p-6">
-                <StepWizard 
-                  steps={steps} 
-                  onComplete={handleWizardComplete}
-                />
+          {/* Main Content Area */}
+          <div className="flex-1 bg-gray-50 dark:bg-gray-900">
+            <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+              <div className="px-4 sm:px-0">
+                <StepWizard steps={steps} onComplete={handleWizardComplete} />
               </div>
             </div>
-          </main>
+          </div>
         </div>
       </div>
     </WizardProvider>
   );
-} 
+}

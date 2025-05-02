@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MetricsChart } from './MetricsChart';
 import { MetricsService, TestSummary, DetailedEndpointMetric } from '../services/MetricsService';
+import { useTheme } from '../contexts/ThemeContext';
 
 const chartTypes = [
   {
@@ -37,6 +38,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
     activeEndpoints: [],
     peakConcurrentRequests: 0
   });
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     const metricsService = MetricsService.getInstance();
@@ -85,35 +87,43 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
     : 0;
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="p-6 space-y-6 bg-white dark:bg-gray-800">
       {/* High-level metrics cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="text-sm font-medium text-gray-500">Total Requests</h3>
-          <p className="mt-1 text-2xl font-semibold">{summary.totalRequests.toLocaleString()}</p>
+        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Requests</h3>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            {summary.totalRequests.toLocaleString()}
+          </p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="text-sm font-medium text-gray-500">Active Endpoints</h3>
-          <p className="mt-1 text-2xl font-semibold">{summary.activeEndpoints.length}</p>
+        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Endpoints</h3>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            {summary.activeEndpoints.length}
+          </p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="text-sm font-medium text-gray-500">Peak Concurrent Requests</h3>
-          <p className="mt-1 text-2xl font-semibold">{summary.peakConcurrentRequests}</p>
+        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Peak Concurrent Requests</h3>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            {summary.peakConcurrentRequests}
+          </p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <h3 className="text-sm font-medium text-gray-500">Success Rate</h3>
-          <p className="mt-1 text-2xl font-semibold">{overallSuccessRate.toFixed(1)}%</p>
+        <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Success Rate</h3>
+          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            {overallSuccessRate.toFixed(1)}%
+          </p>
         </div>
       </div>
 
       {/* More detailed metrics */}
       {summary.detailedMetrics && summary.detailedMetrics.length > 0 && (
-        <div className="bg-white rounded-lg shadow">
-          <div className="border-b border-gray-200 p-4">
-            <h3 className="text-lg font-medium">Endpoint Performance</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-lg">
+          <div className="border-b border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Endpoint Performance</h3>
             <div className="mt-2">
               <select 
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:focus:ring-indigo-900 dark:focus:border-indigo-900"
                 value={selectedEndpoint || ''}
                 onChange={(e) => setSelectedEndpoint(e.target.value)}
               >
@@ -130,8 +140,8 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
             <div className="p-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 {/* Success/Failure */}
-                <div className="bg-gray-50 rounded p-4">
-                  <h4 className="text-sm font-medium text-gray-500 mb-1">Success / Failure</h4>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded p-4">
+                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Success / Failure</h4>
                   <div className="flex items-end">
                     <div 
                       className="h-8 rounded-l bg-green-500" 
@@ -142,34 +152,34 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
                       style={{ width: `${100 - selectedEndpointMetrics.successRate * 100}%` }} 
                     ></div>
                   </div>
-                  <div className="flex justify-between mt-1 text-xs text-gray-500">
+                  <div className="flex justify-between mt-1 text-xs text-gray-500 dark:text-gray-400">
                     <span>{selectedEndpointMetrics.successCount} successful ({(selectedEndpointMetrics.successRate * 100).toFixed(1)}%)</span>
                     <span>{selectedEndpointMetrics.failureCount} failed</span>
                   </div>
                 </div>
                 
                 {/* Response Times */}
-                <div className="bg-gray-50 rounded p-4">
-                  <h4 className="text-sm font-medium text-gray-500 mb-3">Response Times</h4>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded p-4">
+                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Response Times</h4>
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Average:</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Average:</span>
                       <span className="text-xs font-medium">{selectedEndpointMetrics.responseTime.avg.toFixed(2)} ms</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Minimum:</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Minimum:</span>
                       <span className="text-xs font-medium">{selectedEndpointMetrics.responseTime.min.toFixed(2)} ms</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-xs text-gray-500">Maximum:</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Maximum:</span>
                       <span className="text-xs font-medium">{selectedEndpointMetrics.responseTime.max.toFixed(2)} ms</span>
                     </div>
                   </div>
                 </div>
                 
                 {/* Status Codes */}
-                <div className="bg-gray-50 rounded p-4">
-                  <h4 className="text-sm font-medium text-gray-500 mb-2">Status Codes</h4>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded p-4">
+                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Status Codes</h4>
                   <div className="space-y-1 max-h-28 overflow-y-auto">
                     {Object.entries(selectedEndpointMetrics.statusCodes).map(([code, count]) => (
                       <div key={code} className="flex justify-between">
@@ -184,7 +194,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
               </div>
               
               {selectedEndpointMetrics.errorMessage && (
-                <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded p-3 text-sm">
+                <div className="mb-4 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-100 rounded p-3 text-sm">
                   <span className="font-medium">Error:</span> {selectedEndpointMetrics.errorMessage}
                 </div>
               )}
@@ -194,8 +204,8 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
       )}
 
       {/* Charts */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-800 rounded-lg">
+        <div className="border-b border-gray-200 dark:border-gray-700">
           <nav className="flex">
             {chartTypes.map((chart, index) => (
               <button
@@ -203,8 +213,8 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
                 onClick={() => setCurrentChartIndex(index)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 ${
                   index === currentChartIndex
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-indigo-500 text-indigo-600 dark:border-indigo-900 dark:text-indigo-300'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 {chart.label}
@@ -218,6 +228,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
           title={currentChart.title}
           key={currentChart.type}
           detailedMetrics={summary.detailedMetrics}
+          isDarkMode={isDarkMode}
         />
       </div>
     </div>

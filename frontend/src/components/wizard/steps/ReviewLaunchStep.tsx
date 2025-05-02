@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Play, AlertCircle } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
+import { useTheme } from '../../../contexts/ThemeContext';
 import apiService from '../../../services/ApiService';
 import { StressTestConfig, StressTestEndpointConfig } from '../../../types/api';
 
@@ -19,6 +20,7 @@ export function ReviewLaunchStep() {
     setIsLoading,
     isLoading
   } = useWizard();
+  const { isDarkMode } = useTheme();
   
   const [validationError, setValidationError] = useState<string | null>(null);
   
@@ -126,139 +128,143 @@ export function ReviewLaunchStep() {
   
   return (
     <div className="space-y-6">
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+      <div className="bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-400 dark:border-blue-500 p-4">
         <div className="flex">
           <div className="ml-3">
-            <p className="text-sm text-blue-700">
-              Review your test configuration and launch the stress test when ready. 
-              The test results will be displayed after you start the test.
+            <p className="text-sm text-blue-700 dark:text-blue-200">
+              Review your test configuration and launch the load test when ready.
             </p>
           </div>
         </div>
       </div>
-      
+
       {validationError && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4">
+        <div className="bg-red-50 dark:bg-red-900 border-l-4 border-red-400 dark:border-red-500 p-4">
           <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
+            <AlertCircle className="h-5 w-5 text-red-400 dark:text-red-300" />
             <div className="ml-3">
-              <p className="text-sm text-red-700">
-                {validationError}
-              </p>
+              <p className="text-sm text-red-700 dark:text-red-200">{validationError}</p>
             </div>
           </div>
         </div>
       )}
-      
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-base font-medium text-gray-700">Test Configuration Summary</h3>
-        </div>
-        
-        <div className="p-4 space-y-4">
-          <div>
-            <h4 className="text-sm font-medium text-gray-700">API Configuration</h4>
-            <div className="mt-1 p-3 bg-gray-50 rounded-md">
-              <div className="text-sm">
-                <div className="flex items-start">
-                  <span className="font-medium w-40">Base URL:</span>
-                  <span className="text-gray-800">{baseUrl}</span>
-                </div>
-                <div className="flex items-start mt-2">
-                  <span className="font-medium w-40">Authentication:</span>
-                  <span className="text-gray-800">{authJson ? 'Configured' : 'None'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        {/* Configuration Summary */}
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Test Configuration</h3>
           
-          <div>
-            <h4 className="text-sm font-medium text-gray-700">Endpoints ({selectedEndpoints.length})</h4>
-            <div className="mt-1 p-3 bg-gray-50 rounded-md max-h-40 overflow-y-auto">
-              <ul className="text-sm space-y-1">
-                {selectedEndpoints.map((endpoint, index) => (
-                  <li key={index} className="flex items-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      endpoint.split(' ')[0] === 'GET' 
-                        ? 'bg-blue-100 text-blue-800' 
-                        : endpoint.split(' ')[0] === 'POST'
-                        ? 'bg-green-100 text-green-800'
-                        : endpoint.split(' ')[0] === 'PUT'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : endpoint.split(' ')[0] === 'DELETE'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {endpoint.split(' ')[0]}
-                    </span>
-                    <span className="ml-2 text-gray-800">{endpoint.split(' ')[1]}</span>
-                  </li>
-                ))}
-              </ul>
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">API Base URL</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{baseUrl}</dd>
             </div>
-          </div>
-          
-          <div>
-            <h4 className="text-sm font-medium text-gray-700">Load Configuration</h4>
-            <div className="mt-1 p-3 bg-gray-50 rounded-md">
-              <div className="text-sm space-y-2">
-                <div className="flex items-start">
-                  <span className="font-medium w-40">Concurrent Requests:</span>
-                  <span className="text-gray-800">{concurrentRequests}</span>
-                </div>
-                <div className="flex items-start">
-                  <span className="font-medium w-40">Distribution Strategy:</span>
-                  <span className="text-gray-800">
-                    {distributionMode === 'sequential' && 'Sequential'}
-                    {distributionMode === 'interleaved' && 'Interleaved'}
-                    {distributionMode === 'random' && 'Random'}
-                    {!['sequential', 'interleaved', 'random'].includes(distributionMode) && 
-                      distributionMode.charAt(0).toUpperCase() + distributionMode.slice(1)}
-                  </span>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Authentication</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                {authJson ? 'Configured' : 'None'}
+              </dd>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Concurrent Users</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{concurrentRequests}</dd>
+            </div>
+            
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Distribution Strategy</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                {distributionMode.charAt(0).toUpperCase() + distributionMode.slice(1)}
+              </dd>
+            </div>
+
+            {showAdvancedOptions && (
+              <>
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Ramp Up Time</dt>
+                  <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{strategyOptions.rampUpTime}s</dd>
                 </div>
                 
-                {showAdvancedOptions && (
-                  <div className="pt-2">
-                    <span className="font-medium">Advanced Options:</span>
-                    
-                    {distributionMode === 'sequential' && (
-                      <div className="pl-4 mt-1 space-y-1">
-                        <div>Delay between requests: {strategyOptions[distributionMode].sequential_delay} ms</div>
-                        <div>Repeat count: {strategyOptions[distributionMode].sequential_repeat}</div>
-                      </div>
-                    )}
-                    
-                    {distributionMode === 'random' && (
-                      <div className="pl-4 mt-1 space-y-1">
-                        <div>Seed: {strategyOptions[distributionMode].random_seed || 'Random'}</div>
-                        <div>Distribution pattern: {strategyOptions[distributionMode].random_distribution_pattern}</div>
-                      </div>
-                    )}
-                    
-                    {distributionMode === 'interleaved' && Object.keys(strategyOptions[distributionMode]?.endpoint_distribution || {}).length > 0 && (
-                      <div className="pl-4 mt-1">
-                        <div>Custom endpoint distribution configured</div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Hold Time</dt>
+                  <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{strategyOptions.holdTime}s</dd>
+                </div>
+                
+                <div>
+                  <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Think Time</dt>
+                  <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{strategyOptions.thinkTime}ms</dd>
+                </div>
+              </>
+            )}
+          </dl>
+        </div>
+
+        {/* Selected Endpoints */}
+        <div className="p-6">
+          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-4">Selected Endpoints</h4>
+          
+          <div className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+            <div className="bg-gray-50 dark:bg-gray-900 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <div className="grid grid-cols-12 gap-4">
+                <div className="col-span-2">Method</div>
+                <div className="col-span-6">Path</div>
+                <div className="col-span-4">Configuration</div>
               </div>
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {selectedEndpoints.map((endpoint, index) => {
+                const [method, path] = endpoint.split(' ');
+                return (
+                  <div key={index} className="px-4 py-3 bg-white dark:bg-gray-800">
+                    <div className="grid grid-cols-12 gap-4">
+                      <div className="col-span-2">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          method === 'GET'
+                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                            : method === 'POST'
+                            ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                            : method === 'PUT'
+                            ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                            : 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200'
+                        }`}>
+                          {method}
+                        </span>
+                      </div>
+                      <div className="col-span-6">
+                        <span className="text-sm text-gray-900 dark:text-gray-100">{path}</span>
+                      </div>
+                      <div className="col-span-4">
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                          {endpointConfigs[endpoint]?.weight 
+                            ? `Weight: ${endpointConfigs[endpoint].weight}`
+                            : 'Default configuration'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
-      </div>
-      
-      <div className="flex justify-center pt-4">
-        <Button
-          onClick={startLoadTest}
-          disabled={isLoading}
-          className="flex items-center py-2 px-8"
-          size="lg"
-        >
-          <Play className="h-5 w-5 mr-2" />
-          {isLoading ? 'Starting...' : 'START STRESS TEST'}
-        </Button>
+
+        {/* Launch Button */}
+        <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex justify-end">
+            <Button
+              onClick={startLoadTest}
+              disabled={isLoading}
+              className="inline-flex items-center"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              {isLoading ? 'Starting Test...' : 'Launch Test'}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
-} 
+}
