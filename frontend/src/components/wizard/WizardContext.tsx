@@ -1,6 +1,43 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { DistributionStrategy, StressTestEndpointConfig } from '../../types/api';
 
+// Define authentication method types
+export type AuthMethod = 
+  | 'none' 
+  | 'api_key' 
+  | 'bearer_token' 
+  | 'basic_auth' 
+  | 'custom_headers'
+  | 'session_cookie';
+
+// Authentication configuration type
+export interface AuthConfig {
+  method: AuthMethod;
+  apiKey?: {
+    key: string;
+    value: string;
+    addTo: 'header' | 'query';
+  };
+  bearerToken?: string;
+  multipleTokens?: boolean;
+  tokensList?: string[];
+  basicAuth?: {
+    username: string;
+    password: string;
+  };
+  multipleBasicAuth?: boolean;
+  basicAuthList?: Array<{username: string, password: string}>;
+  customHeaders?: Record<string, string>;
+  sessionCookie?: {
+    loginUrl: string;
+    method: 'GET' | 'POST' | 'PUT';
+    credentials: Record<string, string>;
+    extractCookie?: boolean;
+    multipleAccounts?: boolean;
+    accountsList?: Array<Record<string, string>>;
+  };
+}
+
 // Define the shape of our context
 type WizardContextType = {
   // API Configuration
@@ -8,6 +45,10 @@ type WizardContextType = {
   setBaseUrl: (url: string) => void;
   authJson: string;
   setAuthJson: (json: string) => void;
+  
+  // New authentication configuration
+  authConfig: AuthConfig;
+  setAuthConfig: (config: AuthConfig) => void;
   
   // Endpoints
   endpoints: Array<{
@@ -65,6 +106,11 @@ export function WizardProvider({ children }: WizardProviderProps) {
   const [baseUrl, setBaseUrl] = useState('');
   const [authJson, setAuthJson] = useState('');
   
+  // New authentication configuration state
+  const [authConfig, setAuthConfig] = useState<AuthConfig>({
+    method: 'none'
+  });
+  
   // Endpoints state
   const [endpoints, setEndpoints] = useState<Array<any>>([]);
   const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
@@ -119,6 +165,8 @@ export function WizardProvider({ children }: WizardProviderProps) {
     setBaseUrl,
     authJson,
     setAuthJson,
+    authConfig,
+    setAuthConfig,
     endpoints,
     setEndpoints,
     selectedEndpoints,

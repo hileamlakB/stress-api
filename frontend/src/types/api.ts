@@ -115,6 +115,32 @@ export type StrategyOptions = {
   random?: RandomOptions;
 };
 
+export type AuthenticationType = 'none' | 'session' | 'token' | 'basic' | 'oauth2';
+
+export type SessionAuthConfig = {
+  type: 'session';
+  login_endpoint: string;
+  login_method: 'GET' | 'POST' | 'PUT';
+  login_payload?: Record<string, any>;
+  login_headers?: Record<string, string>;
+  multiple_accounts?: boolean;
+  accounts?: Array<Record<string, any>>;
+};
+
+export type TokenAuthConfig = {
+  type: 'token';
+  multiple_tokens: boolean;
+  tokens: string[];
+};
+
+export type BasicAuthConfig = {
+  type: 'basic';
+  multiple_accounts: boolean;
+  accounts: Array<{ username: string; password: string }>;
+};
+
+export type AuthenticationConfig = SessionAuthConfig | TokenAuthConfig | BasicAuthConfig;
+
 export type StressTestConfig = {
   target_url: string;
   strategy: DistributionStrategy;
@@ -124,7 +150,9 @@ export type StressTestConfig = {
   duration: number;
   endpoints: StressTestEndpointConfig[];
   headers?: Record<string, string>;
+  query_params?: Record<string, string>;
   use_random_session?: boolean;
+  authentication?: AuthenticationConfig;
 };
 
 export type TestStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped';

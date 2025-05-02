@@ -4,11 +4,13 @@ import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import apiService from '../../../services/ApiService';
 import { StressTestConfig, StressTestEndpointConfig } from '../../../types/api';
+import { AuthConfig, AuthMethod } from '../WizardContext';
 
 export function ReviewLaunchStep() {
   const {
     baseUrl,
     authJson,
+    authConfig,
     selectedEndpoints,
     concurrentRequests,
     distributionMode,
@@ -22,6 +24,19 @@ export function ReviewLaunchStep() {
   
   const [validationError, setValidationError] = useState<string | null>(null);
   
+  // Helper to get auth method display name
+  const getAuthMethodDisplayName = (method: AuthMethod): string => {
+    switch (method) {
+      case 'api_key': return 'API Key';
+      case 'bearer_token': return 'Bearer Token';
+      case 'basic_auth': return 'Basic Authentication';
+      case 'custom_headers': return 'Custom Headers';
+      case 'session_cookie': return 'Session Cookie';
+      case 'none':
+      default: return 'None';
+    }
+  };
+  
   const validateConfig = (): boolean => {
     if (!baseUrl) {
       setValidationError('API Base URL is required');
@@ -33,17 +48,94 @@ export function ReviewLaunchStep() {
       return false;
     }
     
-    if (authJson) {
-      try {
-        JSON.parse(authJson);
-      } catch (error) {
-        setValidationError('Authentication headers contain invalid JSON');
-        return false;
-      }
+    // Validate authentication based on method
+    switch (authConfig.method) {
+      case 'api_key':
+        if (!authConfig.apiKey?.key || !authConfig.apiKey?.value) {
+          setValidationError('API key name and value are required');
+          return false;
+        }
+        break;
+        
+      case 'bearer_token':
+        if (!authConfig.bearerToken) {
+          setValidationError('Bearer token is required');
+          return false;
+        }
+        break;
+        
+      case 'basic_auth':
+        if (!authConfig.basicAuth?.username || !authConfig.basicAuth?.password) {
+          setValidationError('Username and password are required for Basic Authentication');
+          return false;
+        }
+        break;
+        
+      case 'session_cookie':
+        if (!authConfig.sessionCookie?.loginUrl) {
+          setValidationError('Login URL is required for Session Cookie authentication');
+          return false;
+        }
+        if (!authConfig.sessionCookie?.credentials) {
+          setValidationError('Login credentials are required for Session Cookie authentication');
+          return false;
+        }
+        break;
+        
+      case 'custom_headers':
+        if (authJson) {
+          try {
+            JSON.parse(authJson);
+          } catch (error) {
+            setValidationError('Authentication headers contain invalid JSON');
+            return false;
+          }
+        }
+        break;
     }
     
     setValidationError(null);
     return true;
+  };
+  
+  // Prepare authentication headers based on the selected method
+  const prepareAuthHeaders = (): Record<string, string> => {
+    switch (authConfig.method) {
+      case 'api_key':
+        if (authConfig.apiKey?.addTo === 'header' && authConfig.apiKey?.key && authConfig.apiKey?.value) {
+          return { [authConfig.apiKey.key]: authConfig.apiKey.value };
+        }
+        return {};
+        
+      case 'bearer_token':
+        // We'll only use the single token here - multiple tokens are handled separately
+        if (!authConfig.multipleTokens && authConfig.bearerToken) {
+          return { 'Authorization': `Bearer ${authConfig.bearerToken}` };
+        }
+        return {};
+        
+      case 'basic_auth':
+        // We'll only use the single credential here - multiple credentials are handled separately
+        if (!authConfig.multipleBasicAuth && authConfig.basicAuth?.username && authConfig.basicAuth?.password) {
+          const base64Credentials = btoa(`${authConfig.basicAuth.username}:${authConfig.basicAuth.password}`);
+          return { 'Authorization': `Basic ${base64Credentials}` };
+        }
+        return {};
+        
+      case 'custom_headers':
+        if (authJson) {
+          try {
+            return JSON.parse(authJson);
+          } catch (error) {
+            console.error('Error parsing auth JSON:', error);
+          }
+        }
+        return {};
+        
+      case 'none':
+      default:
+        return {};
+    }
   };
   
   const startLoadTest = async () => {
@@ -53,13 +145,16 @@ export function ReviewLaunchStep() {
 
     setIsLoading(true);
     try {
-      // Prepare headers from authJson
-      let headers = {};
-      if (authJson) {
-        headers = JSON.parse(authJson);
+      // Prepare headers based on authentication method
+      const headers = prepareAuthHeaders();
+
+      // Prepare query parameters for API key in query
+      let queryParams = {};
+      if (authConfig.method === 'api_key' && authConfig.apiKey?.addTo === 'query' && authConfig.apiKey?.key && authConfig.apiKey?.value) {
+        queryParams = { [authConfig.apiKey.key]: authConfig.apiKey.value };
       }
 
-      // Prepare endpoints config, now using our data generation configurations if available
+      // Prepare endpoints config
       const configuredEndpoints: StressTestEndpointConfig[] = selectedEndpoints.map(endpoint => {
         const [method, path] = endpoint.split(' ');
         
@@ -82,8 +177,50 @@ export function ReviewLaunchStep() {
         duration: 60,      // Default value
         endpoints: configuredEndpoints,
         headers,
+        query_params: Object.keys(queryParams).length > 0 ? queryParams : undefined,
         use_random_session: false
       };
+
+      // Add authentication configurations based on method
+      if (authConfig.method === 'session_cookie' && authConfig.sessionCookie) {
+        if (authConfig.sessionCookie.multipleAccounts && authConfig.sessionCookie.accountsList?.length) {
+          // Multi-account configuration
+          testConfig.authentication = {
+            type: 'session',
+            login_endpoint: authConfig.sessionCookie.loginUrl,
+            login_method: authConfig.sessionCookie.method || 'POST',
+            multiple_accounts: authConfig.sessionCookie.multipleAccounts,
+            accounts: authConfig.sessionCookie.accountsList
+          };
+        } else {
+          // Single account configuration
+          testConfig.authentication = {
+            type: 'session',
+            login_endpoint: authConfig.sessionCookie.loginUrl,
+            login_method: authConfig.sessionCookie.method || 'POST',
+            login_payload: authConfig.sessionCookie.credentials
+          };
+        }
+      } else if (authConfig.method === 'bearer_token' && authConfig.multipleTokens && authConfig.tokensList?.length) {
+        // Multiple bearer tokens configuration
+        testConfig.authentication = {
+          type: 'token',
+          multiple_tokens: true,
+          tokens: authConfig.tokensList.filter(token => token.trim() !== '')
+        };
+      } else if (authConfig.method === 'basic_auth' && authConfig.multipleBasicAuth && authConfig.basicAuthList?.length) {
+        // Multiple basic auth credentials configuration
+        testConfig.authentication = {
+          type: 'basic',
+          multiple_accounts: true,
+          accounts: authConfig.basicAuthList
+            .filter(auth => auth.username.trim() !== '' || auth.password.trim() !== '')
+            .map(auth => ({
+              username: auth.username,
+              password: auth.password
+            }))
+        };
+      }
 
       // Add strategy-specific options to the test config
       if (showAdvancedOptions) {
@@ -166,8 +303,38 @@ export function ReviewLaunchStep() {
                 </div>
                 <div className="flex items-start mt-2">
                   <span className="font-medium w-40">Authentication:</span>
-                  <span className="text-gray-800">{authJson ? 'Configured' : 'None'}</span>
+                  <span className="text-gray-800">{getAuthMethodDisplayName(authConfig.method)}</span>
                 </div>
+                {authConfig.method === 'bearer_token' && authConfig.multipleTokens && (
+                  <div className="flex items-start mt-2">
+                    <span className="font-medium w-40">Bearer Tokens:</span>
+                    <span className="text-gray-800">
+                      {authConfig.tokensList?.length || 0} tokens will be used for distributed testing
+                    </span>
+                  </div>
+                )}
+                {authConfig.method === 'basic_auth' && authConfig.multipleBasicAuth && (
+                  <div className="flex items-start mt-2">
+                    <span className="font-medium w-40">Basic Auth:</span>
+                    <span className="text-gray-800">
+                      {authConfig.basicAuthList?.length || 0} credentials will be used for distributed testing
+                    </span>
+                  </div>
+                )}
+                {authConfig.method === 'session_cookie' && authConfig.sessionCookie?.loginUrl && (
+                  <div className="flex items-start mt-2">
+                    <span className="font-medium w-40">Login Endpoint:</span>
+                    <span className="text-gray-800">{authConfig.sessionCookie.loginUrl}</span>
+                  </div>
+                )}
+                {authConfig.method === 'session_cookie' && authConfig.sessionCookie?.multipleAccounts && (
+                  <div className="flex items-start mt-2">
+                    <span className="font-medium w-40">Test Accounts:</span>
+                    <span className="text-gray-800">
+                      {authConfig.sessionCookie.accountsList?.length || 0} accounts will be used for distributed testing
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
