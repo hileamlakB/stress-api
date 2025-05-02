@@ -193,6 +193,135 @@ export class ApiService {
   }
 
   /**
+   * Create a new test session with optional recurrence scheduling
+   * @param email The email of the user to associate the session with
+   * @param name The name of the session
+   * @param description Optional description for the session
+   * @param recurrence Optional recurrence settings for scheduling
+   * @returns Created session
+   */
+  async createTestSession(
+    email: string, 
+    name: string, 
+    description?: string,
+    recurrence?: {
+      type: 'once' | 'hourly' | 'daily' | 'weekly' | 'monthly';
+      interval?: number;
+      startDate?: string;
+      startTime?: string;
+    }
+  ) {
+    try {
+      // First get the user ID from the email
+      const userData = await this.fetchUserSessions(email);
+      const userId = userData.user_id;
+      
+      if (!userId) {
+        throw new Error('User not found');
+      }
+      
+      const response = await fetch('http://localhost:8000/api/sessions', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          user_id: userId,
+          name,
+          description,
+          recurrence
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create test session');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error creating test session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a test session
+   * @param sessionId The ID of the session to update
+   * @param name New name for the session
+   * @param description New description for the session
+   * @param recurrence Optional recurrence settings for scheduling
+   * @returns Updated session data
+   */
+  async updateTestSession(
+    sessionId: string, 
+    name: string, 
+    description?: string,
+    recurrence?: {
+      type: 'once' | 'hourly' | 'daily' | 'weekly' | 'monthly';
+      interval?: number;
+      startDate?: string;
+      startTime?: string;
+    }
+  ) {
+    try {
+      const response = await fetch(`http://localhost:8000/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name,
+          description,
+          recurrence
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update test session');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating test session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a test session
+   * @param sessionId The ID of the session to delete
+   * @returns Success status
+   */
+  async deleteTestSession(sessionId: string) {
+    try {
+      const response = await fetch(`http://localhost:8000/api/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete test session');
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting test session:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a new session configuration
    * @param config The session configuration data
    * @param userEmail The email of the user to associate the session with

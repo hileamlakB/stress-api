@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { WizardDashboard } from './pages/WizardDashboard';
 import { EndpointDataWrapper } from './components/EndpointDataWrapper';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 const queryClient = new QueryClient();
 
@@ -22,8 +23,22 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/dashboard" element={<Navigate to="/wizard" replace />} />
-          <Route path="/wizard" element={<WizardDashboard />} />
-          <Route path="/test-data-config" element={<EndpointDataWrapper />} />
+          <Route 
+            path="/wizard" 
+            element={
+              <ProtectedRoute>
+                <WizardDashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/test-data-config" 
+            element={
+              <ProtectedRoute>
+                <EndpointDataWrapper />
+              </ProtectedRoute>
+            } 
+          />
         </Routes>
       </Router>
     </QueryClientProvider>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Zap, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2, Settings } from 'lucide-react';
+import { Zap, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2, Settings, LineChart, PlusCircle, ArrowRight } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -9,6 +9,7 @@ import { SessionSidebar, Session } from '../components/SessionSidebar';
 import apiService from '../services/ApiService';
 import { DistributionStrategy, StressTestConfig, DistributionRequirementsResponse, StressTestEndpointConfig } from '../types/api';
 import { EndpointsList } from '../components/endpoints/EndpointsList';
+import { TestSessionModal } from '../components/TestSessionModal';
 
 // Define types for our state
 type Endpoint = {
@@ -82,12 +83,16 @@ export function Dashboard() {
   
   // Session state
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
   
   // User state
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   
   // New state for endpoint configurations
   const [endpointConfigs, setEndpointConfigs] = useState<Record<string, StressTestEndpointConfig>>({});
+  
+  // Add state for the create test modal
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
   const navigate = useNavigate();
 
@@ -191,7 +196,7 @@ export function Dashboard() {
 
   const handleSessionSelect = (session: Session) => {
     setSelectedSession(session);
-    console.log('Selected session:', session);
+    fetchSessions(); // Refresh sessions list
     
     // Use the selected session's configuration to populate the form
     if (session && session.configurations && session.configurations.length > 0) {
@@ -244,6 +249,25 @@ export function Dashboard() {
       console.log(`Loaded configuration with ${session.configurations.length} endpoints`);
     }
   };
+
+  const fetchSessions = async () => {
+    if (!currentUserEmail) return;
+    
+    try {
+      const data = await apiService.fetchUserSessions(currentUserEmail);
+      if (data && Array.isArray(data.sessions)) {
+        setSessions(data.sessions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUserEmail) {
+      fetchSessions();
+    }
+  }, [currentUserEmail]);
 
   const fetchEndpoints = async () => {
     if (!baseUrl) {
@@ -499,8 +523,104 @@ export function Dashboard() {
     setEndpointConfigs(configs);
   };
 
+  // Add this wrapper function to handle the sidebar create button click
+  const handleSidebarCreateClick = () => {
+    setIsCreateModalOpen(true);
+  };
+
+  // Modify the handleCreateNewTest function to handle submissions from the modal
+  const handleCreateNewTest = async (testDetails?: { 
+    name: string; 
+    description: string; 
+    recurrence?: {
+      type: 'once' | 'hourly' | 'daily' | 'weekly' | 'monthly';
+      interval?: number;
+      startDate?: string;
+      startTime?: string;
+    }
+  }) => {
+    // Close the modal if it was open
+    setIsCreateModalOpen(false);
+    
+    if (!testDetails?.name) {
+      // Just create an empty test without saving
+      setSelectedSession(null);
+      setConfigSectionExpanded(true);
+      return;
+    }
+    
+    try {
+      if (currentUserEmail) {
+        // Create a new test session in the database
+        const newSession = await apiService.createTestSession(
+          currentUserEmail,
+          testDetails.name,
+          testDetails.description,
+          testDetails.recurrence
+        );
+        
+        // Select the newly created session
+        setSelectedSession(newSession);
+        setConfigSectionExpanded(true);
+        
+        // Refresh the sessions list to include the new session
+        await fetchSessions();
+      }
+    } catch (error) {
+      console.error('Error creating new test:', error);
+      alert('Failed to create new test. Please try again.');
+      
+      // Fall back to a blank test
+      setSelectedSession(null);
+      setConfigSectionExpanded(true);
+    }
+  };
+
+  // Update handler functions for rename and delete
+  const handleRenameTest = async (id: string, name: string, description: string) => {
+    try {
+      // Get the current session to preserve recurrence settings if they exist
+      const currentSession = sessions.find(session => session.id === id);
+      const recurrence = currentSession?.recurrence;
+      
+      // Make an API call to update the test on the server
+      await apiService.updateTestSession(id, name, description, recurrence);
+      
+      // Update the local state if the selected session is the one being renamed
+      if (selectedSession && selectedSession.id === id) {
+        setSelectedSession({
+          ...selectedSession,
+          name,
+          description
+        });
+      }
+      
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Error renaming test:', error);
+      return Promise.reject(error);
+    }
+  };
+
+  const handleDeleteTest = async (id: string) => {
+    try {
+      // Make an API call to delete the test on the server
+      await apiService.deleteTestSession(id);
+      
+      // If the deleted session was selected, clear the selection
+      if (selectedSession && selectedSession.id === id) {
+        setSelectedSession(null);
+      }
+      
+      return Promise.resolve();
+    } catch (error) {
+      console.error('Error deleting test:', error);
+      return Promise.reject(error);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <nav className="bg-white border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -539,6 +659,9 @@ export function Dashboard() {
           onSessionSelect={handleSessionSelect}
           selectedSessionId={selectedSession?.id}
           userEmail={currentUserEmail}
+          onCreateNewTest={handleSidebarCreateClick}
+          onRenameTest={handleRenameTest}
+          onDeleteTest={handleDeleteTest}
         />
 
         {/* Main content area */}
@@ -552,7 +675,37 @@ export function Dashboard() {
             </div>
           )}
           
-          {!isLoading && (
+          {!isLoading && !selectedSession && (
+            <div className="h-full flex items-center justify-center">
+              <div className="max-w-2xl w-full bg-white dark:bg-gray-800 shadow-sm rounded-lg p-8 text-center">
+                <div className="flex justify-center mb-6">
+                  <div className="bg-blue-100 dark:bg-blue-900/30 p-4 rounded-full">
+                    <LineChart className="h-12 w-12 text-blue-600 dark:text-blue-400" />
+                  </div>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-3">
+                  Welcome to FastAPI Stress Tester
+                </h2>
+                <p className="text-gray-600 dark:text-gray-300 mb-8 max-w-lg mx-auto">
+                  Create a new test to get started or select an existing session from the sidebar.
+                  Our stress testing tool helps you evaluate your API performance under various load conditions.
+                </p>
+                <div className="flex flex-col sm:flex-row justify-center gap-4">
+                  <Button 
+                    onClick={handleSidebarCreateClick}
+                    size="lg"
+                    className="flex items-center justify-center"
+                  >
+                    <PlusCircle className="h-5 w-5 mr-2" />
+                    Create New Test
+                    <ArrowRight className="h-5 w-5 ml-2" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {!isLoading && selectedSession && (
             <>
               <div className="bg-white rounded-lg shadow mb-8">
                 {/* API Configuration Section Header */}
@@ -1290,6 +1443,14 @@ export function Dashboard() {
           )}
         </main>
       </div>
+
+      {/* Create New Test Modal */}
+      <TestSessionModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSave={handleCreateNewTest}
+        title="Create New Test"
+      />
     </div>
   );
 }

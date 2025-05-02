@@ -1,14 +1,33 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Zap, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '../components/Button';
-import { resetPassword } from '../lib/auth';
+import { resetPassword, getCurrentUser } from '../lib/auth';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const navigate = useNavigate();
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          // User is already authenticated, redirect to dashboard
+          navigate('/dashboard');
+        }
+      } catch (error) {
+        // Error checking authentication, continue showing form
+        console.error('Auth check error:', error);
+      }
+    };
+    
+    checkAuth();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

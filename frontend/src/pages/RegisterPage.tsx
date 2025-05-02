@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import { Button } from '../components/Button';
-import { signUp } from '../lib/auth';
+import { signUp, getCurrentUser } from '../lib/auth';
 
 export function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -11,6 +11,24 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          // User is already authenticated, redirect to dashboard
+          navigate('/dashboard');
+        }
+      } catch (error) {
+        // Error checking authentication, continue showing registration form
+        console.error('Auth check error:', error);
+      }
+    };
+    
+    checkAuth();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
