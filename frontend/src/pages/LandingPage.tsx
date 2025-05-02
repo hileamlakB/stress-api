@@ -1,10 +1,50 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Activity, Zap, BarChart3 } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Footer } from '../components/Footer';
 import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
+import { getCurrentUser } from '../lib/auth';
+import { useEffect, useState } from 'react';
 
 export function LandingPage() {
+  const navigate = useNavigate();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  
+  // Check authentication status when the component mounts
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser();
+        setIsAuthenticated(!!user);
+      } catch (error) {
+        setIsAuthenticated(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+  
+  // Handle navigation with auth check
+  const handleNavigation = async (destination: string) => {
+    // If we've already checked auth status, use that information
+    if (isAuthenticated) {
+      navigate('/wizard');
+      return;
+    }
+    
+    // If we haven't checked yet or need to check again
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        navigate('/wizard');
+      } else {
+        navigate(destination);
+      }
+    } catch (error) {
+      navigate(destination);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white text-gray-900 dark:bg-gradient-to-b dark:from-gray-900 dark:to-gray-800 dark:text-white">
       <nav className="container mx-auto px-6 py-4">
@@ -14,12 +54,15 @@ export function LandingPage() {
             <span className="text-xl font-bold">FastAPI Stress Tester</span>
           </div>
           <div className="flex items-center space-x-4">
-            <Link to="/login">
-              <Button variant="outline">Login</Button>
-            </Link>
-            <Link to="/register">
-              <Button>Sign Up</Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              onClick={() => handleNavigation('/login')}
+            >
+              Login
+            </Button>
+            <Button onClick={() => handleNavigation('/register')}>
+              Sign Up
+            </Button>
             <HeaderThemeToggle />
           </div>
         </div>
@@ -37,11 +80,13 @@ export function LandingPage() {
             Monitor performance, analyze bottlenecks, and ensure your API can handle the load.
           </p>
           <div className="flex justify-center space-x-4">
-            <Link to="/register">
-              <Button size="lg" className="animate-pulse">
-                Get Started
-              </Button>
-            </Link>
+            <Button 
+              size="lg" 
+              className="animate-pulse"
+              onClick={() => handleNavigation('/register')}
+            >
+              Get Started
+            </Button>
           </div>
         </div>
 

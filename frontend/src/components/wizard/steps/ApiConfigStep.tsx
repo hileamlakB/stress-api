@@ -3,6 +3,7 @@ import { Settings, Info, KeyRound, User, FileText, Cookie, X, ChevronDown, Plus,
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import { AuthMethod, AuthConfig } from '../WizardContext';
+import { JsonEditor } from '../../JsonEditor';
 
 export function ApiConfigStep() {
   const { 
@@ -85,13 +86,24 @@ export function ApiConfigStep() {
     }
   };
   
-  // Handle legacy JSON auth changes for backward compatibility
+  // Handle authentication JSON change
   const handleAuthJsonChange = (value: string) => {
-    setAuthJson(value);
-    if (validateAuthJson(value)) {
+    try {
+      // Make sure the JSON is valid
+      if (value) {
+        JSON.parse(value);
+      }
+      
+      setAuthJson(value);
       setAuthError('');
-    } else {
-      setAuthError('Invalid JSON format');
+      validateAuthJson(value);
+    } catch (error) {
+      // Skip validation if the error came from JsonEditor, which already validates
+      if (typeof value === 'string' && value.trim().startsWith('{')) {
+        setAuthError('Invalid JSON format');
+      } else {
+        setAuthJson(value);
+      }
     }
   };
   
@@ -628,24 +640,16 @@ export function ApiConfigStep() {
             {!authConfig.sessionCookie?.multipleAccounts ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Login Credentials (JSON)
+                  Login Credentials
                 </label>
-                <textarea
-                  value={authConfig.sessionCookie?.credentials ? JSON.stringify(authConfig.sessionCookie.credentials, null, 2) : ''}
-                  onChange={(e) => handleSessionCookieChange('credentials', e.target.value)}
-                  rows={5}
-                  placeholder={'{\n  "username": "user@example.com",\n  "password": "password123"\n}'}
-                  className={`w-full px-4 py-2 border ${
-                    authError ? 'border-red-300' : 'border-gray-300'
-                  } rounded-md focus:outline-none focus:ring-2 ${
-                    authError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
-                  }`}
+                <JsonEditor
+                  value={authConfig.sessionCookie?.credentials || {}}
+                  onChange={(value) => handleSessionCookieChange('credentials', value)}
+                  placeholder={{ "phone_number": "+1234567890", "otp_code": "123456" }}
+                  error={authError}
                 />
-                {authError && (
-                  <p className="mt-1 text-xs text-red-500">{authError}</p>
-                )}
                 <p className="mt-1 text-xs text-gray-500">
-                  Provide login credentials as a JSON object
+                  Provide key-value pairs for login credentials
                 </p>
               </div>
             ) : (
@@ -681,20 +685,16 @@ export function ApiConfigStep() {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <textarea
-                        value={JSON.stringify(account, null, 2)}
-                        onChange={(e) => updateAccount(index, e.target.value)}
-                        rows={4}
-                        placeholder={'{\n  "username": "user@example.com",\n  "password": "password123"\n}'}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      <JsonEditor
+                        value={account}
+                        onChange={(value) => updateAccount(index, value)}
+                        placeholder={{ "phone_number": "+1234567890", "otp_code": "123456" }}
+                        error={authError && index === authConfig.sessionCookie.accountsList.length - 1 ? authError : undefined}
                       />
                     </div>
                   ))}
                 </div>
                 
-                {authError && (
-                  <p className="mt-1 text-xs text-red-500">{authError}</p>
-                )}
                 <p className="mt-2 text-xs text-gray-500">
                   The test will randomly distribute requests across these accounts, creating a more realistic load pattern.
                 </p>
@@ -707,24 +707,22 @@ export function ApiConfigStep() {
         return (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Custom Headers (JSON)
+              Custom Headers
             </label>
-            <textarea
-              value={authJson}
-              onChange={(e) => handleAuthJsonChange(e.target.value)}
-              rows={5}
-              placeholder={'{\n  "Authorization": "Bearer YOUR_TOKEN_HERE",\n  "X-Custom-Header": "value"\n}'}
-              className={`w-full px-4 py-2 border ${
-                authError ? 'border-red-300' : 'border-gray-300'
-              } rounded-md focus:outline-none focus:ring-2 ${
-                authError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
-              }`}
+            <JsonEditor
+              value={authJson ? (() => {
+                try {
+                  return JSON.parse(authJson);
+                } catch (e) {
+                  return {};
+                }
+              })() : {}}
+              onChange={(value) => handleAuthJsonChange(JSON.stringify(value))}
+              placeholder={{ "Authorization": "Bearer YOUR_TOKEN", "X-Custom-Header": "value" }}
+              error={authError}
             />
-            {authError && (
-              <p className="mt-1 text-xs text-red-500">{authError}</p>
-            )}
             <p className="mt-1 text-xs text-gray-500">
-              Specify any custom headers as a JSON object
+              Specify any custom headers as key-value pairs
             </p>
           </div>
         );

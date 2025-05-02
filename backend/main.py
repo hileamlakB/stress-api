@@ -65,7 +65,9 @@ from database.crud import (
     get_user_test_results,  # New import
     get_filtered_user_test_results,  # New import
     get_filtered_user_test_results_count,  # New import
-    update_test_result  # New import
+    update_test_result,  # New import
+    update_session,  # New import
+    delete_session  # New import
 )
 from sqlalchemy.orm import Session
 
@@ -109,6 +111,13 @@ class SessionConfigRequest(BaseModel):
     test_duration: int
     think_time: int
     success_criteria: Optional[Dict[str, Any]] = None
+
+# Request model for creating a session
+class CreateSessionRequest(BaseModel):
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    recurrence: Optional[Dict[str, Any]] = None
 
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
@@ -1016,6 +1025,180 @@ async def get_test_result_by_id(result_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error getting test result: {str(e)}"
+        )
+
+# Endpoint to create a session
+@app.post("/api/sessions", response_model=SessionModel)
+async def create_session_endpoint(request: CreateSessionRequest, db: Session = Depends(get_db)):
+    try:
+        # Convert user_id string to UUID
+        user_id = uuid.UUID(request.user_id)
+        
+        # Create the session
+        session = create_session(db, user_id, request.name, request.description)
+        
+        # Store recurrence data as part of success_criteria if provided
+        if request.recurrence:
+            # For now, we can store this in the session model
+            # In a real implementation, you might want to add a dedicated table
+            # Create an empty configuration to store recurrence data
+            config = create_session_config(
+                db, 
+                session.id, 
+                endpoint_url="placeholder", 
+                http_method="GET",
+                concurrent_users=1,
+                ramp_up_time=0,
+                test_duration=0,
+                think_time=0,
+                success_criteria={"recurrence": request.recurrence}
+            )
+        
+        # Get the created session with configurations
+        configs = get_session_configs(db, session.id)
+        config_models = [
+            SessionConfigModel(
+                id=str(config.id),
+                session_id=str(config.session_id),
+                endpoint_url=config.endpoint_url,
+                http_method=config.http_method,
+                request_headers=config.request_headers,
+                request_body=config.request_body,
+                request_params=config.request_params,
+                concurrent_users=config.concurrent_users,
+                ramp_up_time=config.ramp_up_time,
+                test_duration=config.test_duration,
+                think_time=config.think_time,
+                success_criteria=config.success_criteria
+            )
+            for config in configs
+        ]
+        
+        # Return the session model
+        return SessionModel(
+            id=str(session.id),
+            name=session.name,
+            description=session.description,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            configurations=config_models
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creating session: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating session: {str(e)}"
+        )
+
+# Endpoint to update a session
+@app.patch("/api/sessions/{session_id}", response_model=SessionModel)
+async def update_session_endpoint(
+    session_id: str, 
+    request: CreateSessionRequest, 
+    db: Session = Depends(get_db)
+):
+    try:
+        # Convert session_id string to UUID
+        session_uuid = uuid.UUID(session_id)
+        
+        # Update the session
+        session = update_session(db, session_uuid, request.name, request.description)
+        
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session with ID {session_id} not found"
+            )
+        
+        # Update recurrence data if provided
+        if request.recurrence:
+            # Get existing configurations
+            configs = get_session_configs(db, session_uuid)
+            
+            if configs:
+                # Update the first configuration with new recurrence data
+                config = configs[0]
+                success_criteria = config.success_criteria or {}
+                success_criteria["recurrence"] = request.recurrence
+                
+                # Update the configuration
+                config.success_criteria = success_criteria
+                db.commit()
+            else:
+                # Create a new configuration with recurrence data
+                create_session_config(
+                    db, 
+                    session.id, 
+                    endpoint_url="placeholder", 
+                    http_method="GET",
+                    concurrent_users=1,
+                    ramp_up_time=0,
+                    test_duration=0,
+                    think_time=0,
+                    success_criteria={"recurrence": request.recurrence}
+                )
+        
+        # Get the updated session with configurations
+        configs = get_session_configs(db, session.id)
+        config_models = [
+            SessionConfigModel(
+                id=str(config.id),
+                session_id=str(config.session_id),
+                endpoint_url=config.endpoint_url,
+                http_method=config.http_method,
+                request_headers=config.request_headers,
+                request_body=config.request_body,
+                request_params=config.request_params,
+                concurrent_users=config.concurrent_users,
+                ramp_up_time=config.ramp_up_time,
+                test_duration=config.test_duration,
+                think_time=config.think_time,
+                success_criteria=config.success_criteria
+            )
+            for config in configs
+        ]
+        
+        # Return the session model
+        return SessionModel(
+            id=str(session.id),
+            name=session.name,
+            description=session.description,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            configurations=config_models
+        )
+        
+    except Exception as e:
+        logger.error(f"Error updating session: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating session: {str(e)}"
+        )
+
+# Endpoint to delete a session
+@app.delete("/api/sessions/{session_id}")
+async def delete_session_endpoint(session_id: str, db: Session = Depends(get_db)):
+    try:
+        # Convert session_id string to UUID
+        session_uuid = uuid.UUID(session_id)
+        
+        # Delete the session
+        success = delete_session(db, session_uuid)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session with ID {session_id} not found"
+            )
+        
+        return {"success": True, "message": f"Session with ID {session_id} deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting session: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting session: {str(e)}"
         )
 
 if __name__ == "__main__":
