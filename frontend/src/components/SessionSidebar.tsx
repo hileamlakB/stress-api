@@ -85,6 +85,15 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     fetchSessions();
   }, [onSessionSelect, selectedSessionId, userEmail]);
 
+  const createNewSession = async (email: string, password: string) => {
+    try {
+      const response = await ApiService.createSession(email, password);
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return (
     <div className="w-64 h-full bg-white border-r border-gray-200 flex flex-col shadow-sm">
       <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
@@ -163,6 +172,28 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
             {selectedSessionId ? '1 selected' : 'None selected'}
           </span>
         )}
+      </div>
+      
+      <div className="p-4 border-t border-gray-200 bg-white">
+        <button
+          onClick={() => {
+            const email = prompt('Enter email for new session:');
+            const password = prompt('Enter password for new session:');
+            if (email && password) {
+              createNewSession(email, password)
+                .then(session => {
+                  alert('New session created with ID: ' + session.id);
+                  setSessions([...sessions, session]);
+                })
+                .catch(error => {
+                  alert('Error creating session: ' + error.message);
+                });
+            }
+          }}
+          className="w-full text-center py-2.5 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-all duration-200"
+        >
+          Create New Session
+        </button>
       </div>
     </div>
   );
