@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Zap, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2, Settings } from 'lucide-react';
+import { Zap, LogOut, Play, RefreshCw, Link, Plus, Minus, Check, ChevronDown, ChevronUp, Filter, Tag, Wand2, Settings, Moon, Sun } from 'lucide-react';
 import { Button } from '../components/Button';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { MetricsPanel } from '../components/MetricsPanel';
@@ -27,6 +27,10 @@ export function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [showAuthConfig, setShowAuthConfig] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme === 'dark';
+  });
   
   // Section expansion states
   const [configSectionExpanded, setConfigSectionExpanded] = useState(true);
@@ -96,6 +100,21 @@ export function Dashboard() {
     fetchDistributionStrategies();
     fetchDistributionRequirements();
   }, []);
+
+  // Dark mode effect
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
 
   // Initialize default options when requirements change or distribution mode changes
   useEffect(() => {
@@ -500,12 +519,12 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="bg-white border-b border-gray-200/50">
+    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <nav className="bg-white dark:bg-gray-800 border-b border-gray-200/50 dark:border-gray-700/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <Zap className="h-8 w-8 text-indigo-600" />
+              <Zap className="h-8 w-8 text-indigo-600 dark:text-indigo-400" />
               <span className="ml-2 text-xl font-semibold">FastAPI Stress Tester 🚀</span>
             </div>
             <div className="flex items-center space-x-4">
@@ -528,6 +547,17 @@ export function Dashboard() {
                 <LogOut className="h-5 w-5 mr-1" />
                 Sign Out
               </Button>
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? (
+                  <Sun className="w-5 h-5 text-yellow-500" />
+                ) : (
+                  <Moon className="w-5 h-5 text-gray-600" />
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -547,21 +577,21 @@ export function Dashboard() {
             <div className="flex justify-center items-center h-full">
               <div className="flex flex-col items-center">
                 <RefreshCw className="h-10 w-10 text-indigo-600 animate-spin" />
-                <p className="mt-4 text-gray-600">Loading...</p>
+                <p className="mt-4 text-gray-600 dark:text-gray-400">Loading...</p>
               </div>
             </div>
           )}
           
           {!isLoading && (
             <>
-              <div className="bg-white rounded-lg shadow mb-8">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
                 {/* API Configuration Section Header */}
                 <div 
-                  className="p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
+                  className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer"
                   onClick={() => setConfigSectionExpanded(!configSectionExpanded)}
                 >
-                  <h3 className="text-lg font-medium text-gray-900">API Configuration</h3>
-                  <div className="text-gray-500">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">API Configuration</h3>
+                  <div className="text-gray-500 dark:text-gray-400">
                     {configSectionExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                   </div>
                 </div>
@@ -573,12 +603,12 @@ export function Dashboard() {
                 >
                   <div className="p-6">
                     {/* Add instructional text */}
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                       Start by entering the base URL of your FastAPI application. This should include the protocol (http/https), domain, and port if needed.
                     </p>
                     <div className="space-y-6">
                       <div>
-                        <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="baseUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                           API Base URL
                         </label>
                         <div className="flex">
@@ -588,10 +618,10 @@ export function Dashboard() {
                             value={baseUrl}
                             onChange={(e) => setBaseUrl(e.target.value)}
                             placeholder="https://your-api.com"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                           />
                         </div>
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                           Example: http://localhost:8000 or https://api.example.com
                         </p>
                       </div>
@@ -609,12 +639,12 @@ export function Dashboard() {
                         </div>
                         
                         {showAuthConfig && (
-                          <div className="mt-4 p-4 border border-gray-200 rounded-md bg-gray-50">
+                          <div className="mt-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800">
                             {/* Add instructional text */}
-                            <p className="text-sm text-gray-600 mb-3">
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                               Specify authentication headers as a JSON object. These will be included with every request during load testing.
                             </p>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                               Authentication Headers (JSON)
                             </label>
                             <textarea
@@ -626,15 +656,15 @@ export function Dashboard() {
                               rows={5}
                               placeholder='{"Authorization": "Bearer YOUR_TOKEN_HERE"}'
                               className={`w-full px-4 py-2 border ${
-                                authError ? 'border-red-300' : 'border-gray-300'
+                                authError ? 'border-red-300' : 'border-gray-300 dark:border-gray-600'
                               } rounded-md focus:outline-none focus:ring-2 ${
-                                authError ? 'focus:ring-red-500' : 'focus:ring-indigo-500'
+                                authError ? 'focus:ring-red-500' : 'focus:ring-indigo-500 dark:focus:ring-indigo-400'
                               }`}
                             />
                             {authError && (
                               <p className="mt-1 text-xs text-red-500">{authError}</p>
                             )}
-                            <p className="mt-1 text-xs text-gray-500">
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                               Example: {"{"}"Authorization": "Bearer eyJhbGciOiJ..."{"}"}
                             </p>
                           </div>
@@ -646,13 +676,13 @@ export function Dashboard() {
               </div>
 
               {/* Available Endpoints Section */}
-              <div className="bg-white rounded-lg shadow mb-8">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
                 <div 
-                  className="p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
+                  className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer"
                   onClick={() => setEndpointsSectionExpanded(!endpointsSectionExpanded)}
                 >
                   <div className="flex justify-between items-center w-full">
-                    <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Available Endpoints</h3>
                     <div className="flex items-center">
                       <Button
                         onClick={(e) => {
@@ -682,7 +712,7 @@ export function Dashboard() {
                 >
                   <div className="p-6">
                     {/* Add instructional text */}
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                       Select the endpoints you want to include in your load test. You can filter, select all, or choose specific endpoints to test.
                     </p>
                     {endpoints.length > 0 && (
@@ -692,14 +722,14 @@ export function Dashboard() {
                           <div className="flex mb-2 items-center">
                             <div className="relative flex-1">
                               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Filter className="h-4 w-4 text-gray-400" />
+                                <Filter className="h-4 w-4 text-gray-400 dark:text-gray-500" />
                               </div>
                               <input
                                 type="text"
                                 value={endpointFilter}
                                 onChange={(e) => setEndpointFilter(e.target.value)}
                                 placeholder="Filter endpoints (path, method, description)"
-                                className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                               />
                             </div>
                             <div className="ml-4 space-x-2">
@@ -725,14 +755,14 @@ export function Dashboard() {
                           {advancedFiltering && (
                             <div className="flex items-center mt-2 mb-2 space-x-4">
                               <div className="flex items-center">
-                                <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 mr-2">
+                                <label htmlFor="methodFilter" className="block text-sm font-medium text-gray-700 dark:text-gray-100 mr-2">
                                   Method:
                                 </label>
                                 <select
                                   id="methodFilter"
                                   value={filterByMethod}
                                   onChange={(e) => setFilterByMethod(e.target.value)}
-                                  className="text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1 px-2"
+                                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:ring-indigo-400 py-1 px-2"
                                 >
                                   {availableMethods.map(method => (
                                     <option key={method} value={method}>
@@ -742,7 +772,7 @@ export function Dashboard() {
                                 </select>
                               </div>
                               <div className="flex items-center ml-4">
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">
                                   Found {filteredEndpoints.length} of {endpoints.length} endpoints
                                 </span>
                               </div>
@@ -750,19 +780,19 @@ export function Dashboard() {
                           )}
 
                           {/* Endpoint grouping tabs */}
-                          <div className="flex overflow-x-auto space-x-1 pt-3 pb-2 border-b border-gray-200">
+                          <div className="flex overflow-x-auto space-x-1 pt-3 pb-2 border-b border-gray-200 dark:border-gray-700">
                             {availableTabs.map(tab => (
                               <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
                                 className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${
                                   activeTab === tab
-                                    ? 'bg-indigo-100 text-indigo-700'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                    ? 'bg-indigo-100 dark:bg-indigo-800 text-indigo-700 dark:text-indigo-100'
+                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                                 }`}
                               >
                                 {tab === 'all' ? 'All Endpoints' : `/${tab}`}
-                                <span className="ml-1 text-xs text-gray-500">
+                                <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
                                   ({tab === 'all' ? endpoints.length : (endpointGroups[tab]?.length || 0)})
                                 </span>
                               </button>
@@ -770,17 +800,17 @@ export function Dashboard() {
                           </div>
                         </div>
 
-                        <div className="mt-3 border border-gray-200 rounded-md overflow-hidden">
-                          <div className="flex bg-gray-100 px-4 py-2 border-b border-gray-200">
+                        <div className="mt-3 border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+                          <div className="flex bg-gray-100 dark:bg-gray-800 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                             <div className="w-8"></div>
-                            <div className="w-16 text-xs font-medium text-gray-500">METHOD</div>
-                            <div className="flex-1 text-xs font-medium text-gray-500">ENDPOINT</div>
-                            <div className="w-24 text-xs font-medium text-gray-500">DETAILS</div>
+                            <div className="w-16 text-xs font-medium text-gray-700 dark:text-gray-100">METHOD</div>
+                            <div className="flex-1 text-xs font-medium text-gray-700 dark:text-gray-100">ENDPOINT</div>
+                            <div className="w-24 text-xs font-medium text-gray-700 dark:text-gray-100">DETAILS</div>
                           </div>
                           
                           <div className="max-h-64 overflow-y-auto">
                             {filteredEndpoints.length === 0 ? (
-                              <div className="px-4 py-3 text-sm text-gray-600">
+                              <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                                 No endpoints match your filter
                               </div>
                             ) : (
@@ -792,8 +822,8 @@ export function Dashboard() {
                                   <div 
                                     key={index}
                                     onClick={() => handleToggleEndpoint(endpoint)}
-                                    className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
-                                      index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
+                                    className={`flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer ${
+                                      index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''
                                     }`}
                                   >
                                     <div className="w-8">
@@ -801,28 +831,28 @@ export function Dashboard() {
                                         type="checkbox"
                                         checked={isSelected}
                                         onChange={() => {}}
-                                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                        className="h-4 w-4 text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500 dark:focus:ring-indigo-400 border-gray-300 dark:border-gray-600 rounded"
                                       />
                                     </div>
                                     <div className="w-16">
                                       <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                                         endpoint.method === 'GET' 
-                                          ? 'bg-blue-100 text-blue-800' 
+                                          ? 'bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100' 
                                           : endpoint.method === 'POST'
-                                          ? 'bg-green-100 text-green-800'
+                                          ? 'bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100'
                                           : endpoint.method === 'PUT'
-                                          ? 'bg-yellow-100 text-yellow-800'
+                                          ? 'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100'
                                           : endpoint.method === 'DELETE'
-                                          ? 'bg-red-100 text-red-800'
-                                          : 'bg-gray-100 text-gray-800'
+                                          ? 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100'
+                                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100'
                                       }`}>
                                         {endpoint.method}
                                       </span>
                                     </div>
-                                    <div className="flex-1 text-sm text-gray-700">
+                                    <div className="flex-1 text-sm text-gray-700 dark:text-gray-100">
                                       {endpoint.path}
                                     </div>
-                                    <div className="w-24 text-xs text-gray-500 truncate">
+                                    <div className="w-24 text-xs text-gray-500 dark:text-gray-400 truncate">
                                       {endpoint.summary || endpoint.description || '-'}
                                     </div>
                                   </div>
@@ -832,17 +862,17 @@ export function Dashboard() {
                           </div>
                         </div>
                         
-                        <div className="mt-2 text-sm text-gray-500">
+                        <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                           Selected {selectedEndpoints.length} endpoints
                         </div>
                       </>
                     )}
                     
                     {!endpoints.length && !isLoadingEndpoints && (
-                      <div className="border border-gray-200 rounded-md p-8 flex flex-col items-center justify-center text-center">
-                        <Link className="h-12 w-12 text-gray-400 mb-2" />
-                        <h4 className="text-gray-900 font-medium mb-1">No Endpoints Available</h4>
-                        <p className="text-gray-500 text-sm mb-4">
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-md p-8 flex flex-col items-center justify-center text-center">
+                        <Link className="h-12 w-12 text-gray-400 dark:text-gray-500 mb-2" />
+                        <h4 className="text-gray-900 dark:text-gray-100 font-medium mb-1">No Endpoints Available</h4>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
                           Enter a FastAPI base URL and click "Fetch Endpoints" to get started
                         </p>
                       </div>
@@ -853,13 +883,13 @@ export function Dashboard() {
 
               {/* Data Generation Configuration Section */}
               {selectedEndpoints.length > 0 && (
-                <div className="bg-white rounded-lg shadow mb-8">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
                   <div 
-                    className="p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
+                    className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer"
                     onClick={() => setDataGenSectionExpanded(!dataGenSectionExpanded)}
                   >
-                    <h3 className="text-lg font-medium text-gray-900">Data Generation Configuration</h3>
-                    <div className="text-gray-500">
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Data Generation Configuration</h3>
+                    <div className="text-gray-500 dark:text-gray-400">
                       {dataGenSectionExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                     </div>
                   </div>
@@ -871,7 +901,7 @@ export function Dashboard() {
                   >
                     <div className="p-6">
                       {/* Add instructional text */}
-                      <p className="text-sm text-gray-600 mb-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         Configure the request body and parameters for each selected endpoint. This will define the data sent during the load test.
                       </p>
                       <EndpointsList
@@ -885,13 +915,13 @@ export function Dashboard() {
               )}
               
               {/* Test Configuration Section */}
-              <div className="bg-white rounded-lg shadow mb-8">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
                 <div 
-                  className="p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
+                  className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center cursor-pointer"
                   onClick={() => setTestConfigSectionExpanded(!testConfigSectionExpanded)}
                 >
-                  <h3 className="text-lg font-medium text-gray-900">Test Configuration</h3>
-                  <div className="text-gray-500">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Test Configuration</h3>
+                  <div className="text-gray-500 dark:text-gray-400">
                     {testConfigSectionExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                   </div>
                 </div>
@@ -903,16 +933,16 @@ export function Dashboard() {
                 >
                   <div className="p-6">
                     {/* Add instructional text */}
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                       Adjust the stress test parameters below to define how requests will be distributed and executed during testing.
                     </p>
                     <div className="space-y-6">
                       <div>
                         <div className="flex justify-between items-center mb-2">
-                          <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700">
+                          <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700 dark:text-gray-100">
                             Maximum Concurrent Requests
                           </label>
-                          <span className="text-sm text-gray-500">{concurrentRequests}</span>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">{concurrentRequests}</span>
                         </div>
                         <input
                           id="concurrentRequests"
@@ -921,25 +951,25 @@ export function Dashboard() {
                           max="50"
                           value={concurrentRequests}
                           onChange={(e) => setConcurrentRequests(parseInt(e.target.value))}
-                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
                         />
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                           Controls how many requests will run simultaneously. Higher values create more server load.
                         </p>
                       </div>
                       
                       <div>
-                        <h4 className="text-sm font-medium text-gray-700 mb-3">Distribution Strategy</h4>
-                        <p className="text-sm text-gray-600 mb-3">
+                        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-100 mb-3">Distribution Strategy</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                           Select how requests should be distributed across your endpoints. Each strategy creates different load patterns.
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           {isLoadingStrategies ? (
-                            <div className="col-span-3 py-4 text-center text-sm text-gray-500">
+                            <div className="col-span-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
                               Loading distribution strategies...
                             </div>
                           ) : availableStrategies.length === 0 ? (
-                            <div className="col-span-3 py-4 text-center text-sm text-gray-500">
+                            <div className="col-span-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
                               No distribution strategies available.
                             </div>
                           ) : (
@@ -949,8 +979,8 @@ export function Dashboard() {
                                 onClick={() => setDistributionMode(strategy as DistributionStrategy)}
                                 className={`border ${
                                   distributionMode === strategy 
-                                    ? 'border-indigo-500 bg-indigo-50' 
-                                    : 'border-gray-200 hover:bg-gray-50'
+                                    ? 'border-indigo-500 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-800' 
+                                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
                                 } rounded-lg p-3 cursor-pointer transition-colors`}
                               >
                                 <div className="flex items-center mb-1">
@@ -958,9 +988,9 @@ export function Dashboard() {
                                     type="radio"
                                     checked={distributionMode === strategy}
                                     readOnly
-                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                                    className="h-4 w-4 text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                                   />
-                                  <span className="text-sm font-medium text-gray-900 ml-2">
+                                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100 ml-2">
                                     {strategy === 'sequential' && 'Sequential testing'}
                                     {strategy === 'interleaved' && 'Interleaved testing'}
                                     {strategy === 'random' && 'Random distribution'}
@@ -968,7 +998,7 @@ export function Dashboard() {
                                       strategy.charAt(0).toUpperCase() + strategy.slice(1)}
                                   </span>
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
                                   {strategy === 'sequential' && 'Requests are sent one after another in order'}
                                   {strategy === 'interleaved' && 'Requests are distributed evenly across endpoints'}
                                   {strategy === 'random' && 'Requests are sent randomly to selected endpoints'}
@@ -988,26 +1018,26 @@ export function Dashboard() {
                           type="checkbox"
                           checked={showAdvancedOptions}
                           onChange={() => setShowAdvancedOptions(!showAdvancedOptions)}
-                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500 dark:focus:ring-indigo-400 border-gray-300 dark:border-gray-600 rounded"
                         />
-                        <label htmlFor="showAdvancedOptions" className="ml-2 block text-sm text-gray-700">
+                        <label htmlFor="showAdvancedOptions" className="ml-2 block text-sm text-gray-700 dark:text-gray-100">
                           Show advanced distribution options
                         </label>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1 ml-6">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
                         Advanced options allow fine-tuning of request timing, distribution percentages, and randomization parameters.
                       </p>
                       
                       {/* Strategy-specific options */}
                       {showAdvancedOptions && distributionMode === 'sequential' && (
                         <div>
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Sequential Options</h4>
-                          <p className="text-sm text-gray-600 mb-3">
+                          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-100 mb-2">Sequential Options</h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                             Configure how sequential requests are executed, including delays between requests and repetition count.
                           </p>
                           <div className="space-y-2">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                                 Delay between requests (ms)
                               </label>
                               <input
@@ -1022,11 +1052,11 @@ export function Dashboard() {
                                     }
                                   }));
                                 }}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                                 Repeat count
                               </label>
                               <input
@@ -1041,7 +1071,7 @@ export function Dashboard() {
                                     }
                                   }));
                                 }}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                               />
                             </div>
                           </div>
@@ -1050,9 +1080,9 @@ export function Dashboard() {
                       
                       {showAdvancedOptions && distributionMode === 'interleaved' && (
                         <div>
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Endpoint Distribution</h4>
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                            <p className="text-sm text-gray-700 mb-4">
+                          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-100 mb-2">Endpoint Distribution</h4>
+                          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                            <p className="text-sm text-gray-700 dark:text-gray-100 mb-4">
                               Set the percentage of requests for each endpoint. Total must equal 100%.
                             </p>
                             {selectedEndpoints.length > 0 && (
@@ -1066,8 +1096,8 @@ export function Dashboard() {
                                       <div className="w-32 flex-shrink-0">
                                         <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                                           endpoint.split(' ')[0] === 'GET' 
-                                            ? 'bg-blue-100 text-blue-800' 
-                                            : 'bg-yellow-100 text-yellow-800'
+                                            ? 'bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-100' 
+                                            : 'bg-yellow-100 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-100'
                                         }`}>
                                           {endpoint.split(' ')[0]}
                                         </span>
@@ -1090,7 +1120,7 @@ export function Dashboard() {
                                               }
                                             }));
                                           }}
-                                          className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
+                                          className="p-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                                         >
                                           <Minus className="h-4 w-4" />
                                         </button>
@@ -1112,7 +1142,7 @@ export function Dashboard() {
                                               }));
                                             }
                                           }}
-                                          className="w-14 p-1 mx-1 text-center border border-gray-300 rounded-md"
+                                          className="w-14 p-1 mx-1 text-center border border-gray-300 dark:border-gray-600 rounded-md"
                                         />
                                         <button
                                           onClick={() => {
@@ -1128,7 +1158,7 @@ export function Dashboard() {
                                               }
                                             }));
                                           }}
-                                          className="p-1 rounded-md text-gray-500 hover:bg-gray-200"
+                                          className="p-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                                         >
                                           <Plus className="h-4 w-4" />
                                         </button>
@@ -1138,15 +1168,15 @@ export function Dashboard() {
                                 })}
                                 
                                 {/* Display total distribution percentage */}
-                                <div className="border-t border-gray-200 pt-3 mt-3">
+                                <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
                                   <div className="flex justify-between items-center">
                                     <span className="text-sm font-medium">Total distribution:</span>
                                     <span className={`text-sm font-medium ${
                                       Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
                                         .map(Number)
                                         .reduce((sum, val) => sum + val, 0) === 100
-                                        ? 'text-green-600'
-                                        : 'text-red-600'
+                                        ? 'text-green-600 dark:text-green-400'
+                                        : 'text-red-600 dark:text-red-400'
                                     }`}>
                                       {Object.values(strategyOptions[distributionMode]?.endpoint_distribution || {})
                                         .map(Number)
@@ -1189,7 +1219,7 @@ export function Dashboard() {
                             
                             {selectedEndpoints.length === 0 && (
                               <div className="text-center p-4">
-                                <p className="text-sm text-gray-500">
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
                                   Select endpoints to configure distribution percentages
                                 </p>
                               </div>
@@ -1200,13 +1230,13 @@ export function Dashboard() {
                       
                       {showAdvancedOptions && distributionMode === 'random' && (
                         <div>
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Random Options</h4>
-                          <p className="text-sm text-gray-600 mb-3">
+                          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-100 mb-2">Random Options</h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                             Configure randomization parameters to control how requests are distributed across endpoints.
                           </p>
                           <div className="space-y-2">
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                                 Seed (optional)
                               </label>
                               <input
@@ -1223,11 +1253,11 @@ export function Dashboard() {
                                   }));
                                 }}
                                 placeholder="Random seed for reproducibility"
-                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                               />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-100 mb-1">
                                 Distribution pattern
                               </label>
                               <select
@@ -1241,7 +1271,7 @@ export function Dashboard() {
                                     }
                                   }));
                                 }}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
                               >
                                 <option value="uniform">Uniform (equal probability)</option>
                                 <option value="weighted">Weighted (by endpoint weight)</option>
@@ -1257,7 +1287,7 @@ export function Dashboard() {
               </div>
               
               {/* Run Stress Test Button */}
-              <div className="bg-white rounded-lg shadow p-6 mb-8 flex justify-end">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8 flex justify-end">
                 <Button
                   onClick={startLoadTest}
                   disabled={loading || selectedEndpoints.length === 0}
@@ -1270,18 +1300,18 @@ export function Dashboard() {
               </div>
 
               {activeTestId ? (
-                <div className="bg-white rounded-lg shadow">
-                  <div className="p-6 border-b border-gray-200">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                     <h2 className="text-lg font-semibold">Live Metrics</h2>
-                    <p className="text-sm text-gray-500">Test ID: {activeTestId}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Test ID: {activeTestId}</p>
                   </div>
                   <MetricsPanel testId={activeTestId} />
                 </div>
               ) : (
-                <div className="bg-white rounded-lg shadow">
-                  <div className="p-6 border-b border-gray-200">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                     <h2 className="text-lg font-semibold">Example Visualization</h2>
-                    <p className="text-sm text-gray-500">This is how your metrics will look during a load test</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">This is how your metrics will look during a load test</p>
                   </div>
                   <DemoMetricsPanel />
                 </div>
