@@ -543,6 +543,30 @@ export class ApiService {
       throw error;
     }
   }
+
+  // Add method to generate fake data for an endpoint
+  async generateFakeData(baseUrl: string, method: string, path: string): Promise<any> {
+    try {
+      const response = await fetch('/api/generate-fake-data', {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({
+          url: baseUrl,
+          method,
+          path
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error generating fake data:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();

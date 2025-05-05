@@ -9,6 +9,7 @@ import { EndpointSelectionStep } from '../components/wizard/steps/EndpointSelect
 import { TestConfigStep } from '../components/wizard/steps/TestConfigStep';
 import { ReviewLaunchStep } from '../components/wizard/steps/ReviewLaunchStep';
 import { ResultsStep } from '../components/wizard/steps/ResultsStep';
+import { TestDataStep, validateTestData } from '../components/wizard/steps/TestDataStep';
 import { SessionSidebar, Session } from '../components/SessionSidebar';
 import { signOut, getCurrentUser } from '../lib/auth';
 import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
@@ -124,6 +125,28 @@ const TestConfigWithValidation = () => {
   );
   
   return <ValidatedComponent />;
+};
+
+// Test Data Step with validation
+const TestDataWithValidation = ({ onStepNext }: { onStepNext?: () => void }) => {
+  const { selectedEndpoints, endpointConfigs } = useWizard();
+  
+  const ValidatedComponent = withValidation(
+    TestDataStep,
+    () => {
+      // Convert endpointConfigs to the expected TestDataConfigs format
+      const testDataConfigs: Record<string, any> = {};
+      
+      // Validation will be handled by the TestDataStep component itself
+      if (selectedEndpoints.length === 0) {
+        return { valid: false, message: 'No endpoints selected' };
+      }
+      
+      return { valid: true };
+    }
+  );
+  
+  return <ValidatedComponent onStepNext={onStepNext} />;
 };
 
 export function WizardDashboard() {
@@ -324,6 +347,11 @@ export function WizardDashboard() {
       component: <EndpointSelectionWithValidation />
     },
     {
+      id: 'test-data',
+      title: 'Configure Test Data',
+      component: <TestDataWithValidation />
+    },
+    {
       id: 'test-config',
       title: 'Test Configuration',
       component: <TestConfigWithValidation />
@@ -331,14 +359,12 @@ export function WizardDashboard() {
     {
       id: 'review-launch',
       title: 'Review & Launch',
-      component: <ReviewLaunchStep />,
-      optional: true  // Make this step optional since it's just review
+      component: <ReviewLaunchStep />
     },
     {
       id: 'results',
       title: 'Test Results',
-      component: <ResultsStep />,
-      optional: true  // This step shows results, should be optional
+      component: <ResultsStep />
     }
   ];
   

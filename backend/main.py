@@ -13,6 +13,7 @@ import json
 import sys
 import os
 from pathlib import Path
+import re
 
 # Add parent directory to path so 'backend' is recognized
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -63,7 +64,8 @@ from backend.database.crud import (
     get_user_sessions as get_db_user_sessions, 
     get_session_configs, 
     create_session, 
-    create_session_config, 
+    create_session_config,
+    update_session_config,
     get_session,
     create_test_result,
     get_test_result,
@@ -78,6 +80,7 @@ from backend.database.crud import (
     delete_session,
     create_user
 )
+from backend.database.models import User
 from sqlalchemy.orm import Session
 
 # Import our new services
@@ -138,6 +141,50 @@ async def verify_email_confirmed(authorization: str = Header(None)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed"
         )
+
+async def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
+    """Dependency to get the current authenticated user"""
+    if not authorization:
+        return None
+    
+    try:
+        # Extract the token from the header
+        token = authorization.replace("Bearer ", "")
+        
+        # Get the user via Supabase service
+        # Check the token with Supabase
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{supabase_service.supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": supabase_service.service_key
+                }
+            )
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                user_id = user_data.get("id")
+                email = user_data.get("email")
+                
+                if not user_id or not email:
+                    return None
+                
+                # Get or create user in our database
+                user = get_user_by_email(db, email)
+                if not user:
+                    # Create user in our system if they don't exist yet
+                    user = create_user(db, email=email, user_id=user_id)
+                
+                return user
+            else:
+                return None
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current user: {str(e)}")
+        return None
 
 # Session configuration models
 class SessionConfigModel(BaseModel):
@@ -1644,6 +1691,259 @@ async def get_advanced_test_progress(test_id: str, db: Session = Depends(get_db)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error getting test progress: {str(e)}"
+        )
+
+@app.post("/api/generate-fake-data", response_model=dict)
+async def generate_fake_data(request: dict, current_user: Optional[User] = Depends(get_current_user)):
+    """Generate fake data for a specific endpoint"""
+    url = request.get("url")
+    method = request.get("method")
+    path = request.get("path")
+    
+    if not url or not method or not path:
+        raise HTTPException(
+            status_code=400, 
+            detail="Missing required parameters: url, method, path"
+        )
+    
+    try:
+        # Parse OpenAPI from the URL
+        try:
+            # Use the static method like in other endpoints
+            endpoints = await OpenAPIParser.get_endpoints(url)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to parse OpenAPI schema: {str(e)}"
+            )
+        
+        # Find the specific endpoint - perform a more flexible match for path parameters
+        endpoint = None
+        exact_match = False
+        
+        # First try exact match
+        for ep in endpoints:
+            if ep.method.upper() == method.upper() and ep.path == path:
+                endpoint = ep
+                exact_match = True
+                break
+        
+        # If no exact match, try pattern matching (handle path parameters)
+        if not endpoint:
+            for ep in endpoints:
+                if ep.method.upper() == method.upper():
+                    # Create regex patterns by replacing {param} with any characters
+                    ep_pattern = ep.path.replace("/", "\\/")
+                    ep_pattern = re.sub(r'\{[^}]+\}', '[^/]+', ep_pattern)
+                    ep_pattern = f"^{ep_pattern}$"
+                    
+                    if re.match(ep_pattern, path):
+                        endpoint = ep
+                        break
+        
+        # If still not found, create a simulated endpoint based on the path and method
+        if not endpoint:
+            # Extract potential path parameters from the provided path
+            param_names = re.findall(r'\{([^}]+)\}', path)
+            parameters = []
+            
+            # Create parameter objects for the path parameters
+            for param_name in param_names:
+                parameters.append({
+                    "name": param_name,
+                    "location": "path",
+                    "required": True,
+                    "param_schema": {"type": "string"}
+                })
+            
+            # Add common parameters based on the method
+            if method in ["POST", "PUT", "PATCH"]:
+                # For methods that typically have a request body
+                request_body = {
+                    "type": "object",
+                    "properties": {
+                        "sample": {
+                            "type": "string"
+                        },
+                        "number": {
+                            "type": "integer"
+                        },
+                        "boolean": {
+                            "type": "boolean"
+                        }
+                    }
+                }
+            else:
+                request_body = None
+                
+                # For GET methods, often have query parameters
+                if method == "GET":
+                    # Add some common query parameters
+                    parameters.append({
+                        "name": "limit",
+                        "location": "query",
+                        "required": False,
+                        "param_schema": {"type": "integer"}
+                    })
+                    parameters.append({
+                        "name": "offset",
+                        "location": "query",
+                        "required": False,
+                        "param_schema": {"type": "integer"}
+                    })
+            
+            # Create a simulated endpoint
+            from collections import namedtuple
+            MockEndpoint = namedtuple('MockEndpoint', ['method', 'path', 'parameters', 'request_body'])
+            endpoint = MockEndpoint(
+                method=method,
+                path=path,
+                parameters=parameters,
+                request_body=request_body
+            )
+            
+            logger.info(f"Created simulated endpoint for {method} {path} with {len(parameters)} parameters")
+        
+        # Initialize data generator
+        data_generator = RequestDataGenerator()
+        
+        # Generate header parameters
+        headers = {}
+        # Add standard headers
+        headers["Content-Type"] = "application/json"
+        headers["Accept"] = "application/json"
+        
+        if hasattr(endpoint, 'parameters'):
+            for param in endpoint.parameters:
+                if hasattr(param, 'location') and param.location == "header":
+                    param_schema = getattr(param, 'param_schema', {"type": "string"})
+                    headers[param.name] = data_generator.generate_primitive(
+                        param_schema.get("type", "string"),
+                        param_schema.get("format"),
+                        param_schema.get("enum")
+                    )
+        
+        # Generate path parameters
+        path_params = {}
+        if hasattr(endpoint, 'parameters'):
+            for param in endpoint.parameters:
+                if hasattr(param, 'location') and param.location == "path":
+                    param_schema = getattr(param, 'param_schema', {"type": "string"})
+                    path_params[param.name] = data_generator.generate_primitive(
+                        param_schema.get("type", "string"),
+                        param_schema.get("format"),
+                        param_schema.get("enum")
+                    )
+                    
+            # Extract path parameters from the URL in case there are any not defined in the schema
+            path_param_matches = re.findall(r'\{([^}]+)\}', path)
+            for param_name in path_param_matches:
+                if param_name not in path_params:
+                    # Generate reasonable values based on parameter name
+                    if "id" in param_name.lower():
+                        path_params[param_name] = str(random.randint(1, 1000))
+                    elif "date" in param_name.lower():
+                        path_params[param_name] = datetime.now().strftime("%Y-%m-%d")
+                    elif "uuid" in param_name.lower():
+                        path_params[param_name] = str(uuid.uuid4())
+                    else:
+                        path_params[param_name] = f"sample_{param_name}"
+        
+        # Generate query parameters
+        query_params = {}
+        if hasattr(endpoint, 'parameters'):
+            for param in endpoint.parameters:
+                if hasattr(param, 'location') and param.location == "query":
+                    param_schema = getattr(param, 'param_schema', {"type": "string"})
+                    query_params[param.name] = data_generator.generate_primitive(
+                        param_schema.get("type", "string"),
+                        param_schema.get("format"),
+                        param_schema.get("enum")
+                    )
+        
+        # Generate request body if it exists
+        request_body = {}
+        if hasattr(endpoint, 'request_body') and endpoint.request_body:
+            try:
+                request_body = data_generator.generate_request_data(endpoint.request_body)
+            except Exception as e:
+                logger.warning(f"Error generating request body: {str(e)}")
+                # Provide a generic request body if generation fails
+                request_body = {
+                    "sample": "data",
+                    "number": 123,
+                    "boolean": True
+                }
+        elif method in ["POST", "PUT", "PATCH"]:
+            # For methods that typically have request bodies, provide a generic one
+            resource_name = None
+            path_parts = path.split('/')
+            for part in reversed(path_parts):
+                if not (part.startswith('{') and part.endswith('}')):
+                    resource_name = part
+                    break
+                    
+            if resource_name:
+                if resource_name.endswith('s'):
+                    resource_name = resource_name[:-1]  # Convert plural to singular
+                    
+                # Generate appropriate request body based on resource name
+                if "user" in resource_name.lower():
+                    request_body = {
+                        "name": "John Doe",
+                        "email": "user@example.com",
+                        "username": "johndoe123"
+                    }
+                elif "product" in resource_name.lower():
+                    request_body = {
+                        "name": "Sample Product",
+                        "price": 99.99,
+                        "description": "This is a sample product description"
+                    }
+                elif "order" in resource_name.lower():
+                    request_body = {
+                        "order_id": "ORD-123",
+                        "customer_id": "CUST-456",
+                        "items": [
+                            {
+                                "product_id": "PROD-789",
+                                "quantity": 2,
+                                "price": 49.99
+                            }
+                        ]
+                    }
+                else:
+                    request_body = {
+                        "name": f"Sample {resource_name}",
+                        "description": f"This is a sample {resource_name}",
+                        "created_at": datetime.now().isoformat()
+                    }
+            else:
+                # Generic request body
+                request_body = {
+                    "sample": "data",
+                    "number": 123,
+                    "boolean": True
+                }
+        
+        # Return the generated data
+        result = {
+            "endpoint": f"{method} {path}",
+            "samples": {
+                "headers": headers,
+                "path_params": path_params,
+                "query_params": query_params,
+                "request_body": request_body
+            }
+        }
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error generating fake data: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating fake data: {str(e)}"
         )
 
 if __name__ == "__main__":

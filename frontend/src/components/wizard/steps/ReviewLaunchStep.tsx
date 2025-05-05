@@ -521,26 +521,84 @@ export function ReviewLaunchStep() {
               
               <div>
                 <h4 className="text-sm font-medium text-gray-700">Endpoints ({selectedEndpoints.length})</h4>
-                <div className="mt-1 p-3 bg-gray-50 rounded-md max-h-40 overflow-y-auto">
-                  <ul className="text-sm space-y-1">
-                    {selectedEndpoints.map((endpoint, index) => (
-                      <li key={index} className="flex items-center">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          endpoint.split(' ')[0] === 'GET' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : endpoint.split(' ')[0] === 'POST'
-                            ? 'bg-green-100 text-green-800'
-                            : endpoint.split(' ')[0] === 'PUT'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : endpoint.split(' ')[0] === 'DELETE'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {endpoint.split(' ')[0]}
-                        </span>
-                        <span className="ml-2 text-gray-800">{endpoint.split(' ')[1]}</span>
-                      </li>
-                    ))}
+                <div className="mt-1 p-3 bg-gray-50 rounded-md max-h-80 overflow-y-auto">
+                  <ul className="text-sm space-y-3">
+                    {selectedEndpoints.map((endpoint, index) => {
+                      const [method, path] = endpoint.split(' ');
+                      const config = endpointConfigs[endpoint] || {};
+                      // @ts-ignore - testData property exists at runtime but not in type definition
+                      const testData = config.testData || [];
+                      
+                      return (
+                        <li key={index} className="border-b border-gray-200 dark:border-gray-700 pb-3 last:border-0 last:pb-0">
+                          <div className="flex items-center mb-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              method === 'GET' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : method === 'POST'
+                                ? 'bg-green-100 text-green-800'
+                                : method === 'PUT'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : method === 'DELETE'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {method}
+                            </span>
+                            <span className="ml-2 text-gray-800 font-medium">{path}</span>
+                          </div>
+                          
+                          {testData && testData.length > 0 ? (
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1.5">
+                                {testData.length === 1 ? '1 test data sample configured' : `${testData.length} test data samples configured`}
+                              </div>
+                              <div className="pl-4 border-l-2 border-blue-200">
+                                {testData.slice(0, 1).map((dataset: any, i: number) => (
+                                  <div key={i} className="text-xs">
+                                    <div className="font-medium text-blue-600">{dataset.name || `Sample ${i+1}`}</div>
+                                    <div className="grid grid-cols-2 gap-2 mt-1">
+                                      {Object.keys(dataset.data.path_params || {}).length > 0 && (
+                                        <div>
+                                          <span className="text-xs text-gray-500">Path Parameters:</span>
+                                          {Object.entries(dataset.data.path_params).slice(0, 2).map(([key, value]) => (
+                                            <div key={key} className="text-gray-600 font-mono text-xs">
+                                              {key}: {JSON.stringify(value).substring(0, 20)}
+                                            </div>
+                                          ))}
+                                          {Object.keys(dataset.data.path_params).length > 2 && (
+                                            <div className="text-gray-400">+ {Object.keys(dataset.data.path_params).length - 2} more</div>
+                                          )}
+                                        </div>
+                                      )}
+                                      
+                                      {Object.keys(dataset.data.request_body || {}).length > 0 && (
+                                        <div>
+                                          <span className="text-xs text-gray-500">Request Body:</span>
+                                          <div className="text-gray-600 font-mono text-xs truncate max-w-[200px]">
+                                            {JSON.stringify(dataset.data.request_body).substring(0, 60)}
+                                            {JSON.stringify(dataset.data.request_body).length > 60 ? '...' : ''}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {testData.length > 1 && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    + {testData.length - 1} more samples
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-yellow-600">
+                              No test data configured
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </div>
