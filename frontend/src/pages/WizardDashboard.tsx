@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, LogOut, PlusCircle, ArrowRight, LineChart } from 'lucide-react';
 import { Button } from '../components/Button';
-import { StepWizard } from '../components/wizard/StepWizard';
-import { WizardProvider } from '../components/wizard/WizardContext';
-import { ApiConfigStep } from '../components/wizard/steps/ApiConfigStep';
+import { StepWizard, Step, ValidateFunction } from '../components/wizard/StepWizard';
+import { WizardProvider, useWizard } from '../components/wizard/WizardContext';
+import { ApiConfigStep, validateAuthConfig } from '../components/wizard/steps/ApiConfigStep';
 import { EndpointSelectionStep } from '../components/wizard/steps/EndpointSelectionStep';
 import { TestConfigStep } from '../components/wizard/steps/TestConfigStep';
 import { ReviewLaunchStep } from '../components/wizard/steps/ReviewLaunchStep';
@@ -15,6 +15,115 @@ import { HeaderThemeToggle } from '../components/HeaderThemeToggle';
 import { Footer } from '../components/Footer';
 import apiService from '../services/ApiService';
 import { TestSessionModal } from '../components/TestSessionModal';
+import toast, { Toaster } from 'react-hot-toast';
+
+// Create a wrapper function to inject validation functionality
+function withValidation(Component: React.ComponentType<any>, validateFn: ValidateFunction) {
+  // The function component that will be returned
+  const WithValidation = (props: any) => <Component {...props} />;
+  
+  // Add the validate method to the function component
+  WithValidation.validate = validateFn;
+  
+  return WithValidation;
+}
+
+// Super simplified validation that should just work
+function createSimpleValidation(validate: ValidateFunction) {
+  const ValidationWrapper = () => <div />;
+  ValidationWrapper.validate = validate;
+  return ValidationWrapper;
+}
+
+// API Config Step with validation
+const ApiConfigWithValidation = () => {
+  // Get relevant context values for validation
+  const { authConfig, baseUrl } = useWizard();
+  
+  // Create a dummy component that just exposes validation
+  const SimpleValidator = createSimpleValidation(() => {
+    // Run validation directly
+    if (!baseUrl || baseUrl.trim() === '') {
+      console.log("VALIDATION FAILED: No base URL provided");
+      return { valid: false, message: 'Please enter a base URL for the API' };
+    }
+    
+    // Session cookie validation - simple direct version
+    if (authConfig.method === 'session_cookie') {
+      if (!authConfig.sessionCookie?.loginUrl) {
+        console.log("VALIDATION FAILED: No login URL for session cookie auth");
+        return { valid: false, message: 'Please enter a login endpoint URL' };
+      }
+      
+      if (authConfig.sessionCookie.multipleAccounts) {
+        if (!authConfig.sessionCookie.accountsList || authConfig.sessionCookie.accountsList.length === 0) {
+          console.log("VALIDATION FAILED: No accounts for multiple account session cookie auth");
+          return { valid: false, message: 'Please add at least one account' };
+        }
+      } else {
+        if (!authConfig.sessionCookie?.credentials || Object.keys(authConfig.sessionCookie.credentials).length === 0) {
+          console.log("VALIDATION FAILED: No credentials for session cookie auth");
+          return { valid: false, message: 'Please provide login credentials' };
+        }
+      }
+    }
+    
+    // Other auth methods - use the full validation
+    if (authConfig.method !== 'none' && authConfig.method !== 'session_cookie') {
+      const result = validateAuthConfig(authConfig, baseUrl);
+      console.log("API Config validation:", result);
+      return result;
+    }
+    
+    console.log("VALIDATION PASSED!");
+    return { valid: true };
+  });
+  
+  return (
+    <>
+      <ApiConfigStep />
+      <SimpleValidator />
+    </>
+  );
+};
+
+// Endpoint Selection Step with validation
+const EndpointSelectionWithValidation = () => {
+  const { selectedEndpoints } = useWizard();
+  
+  const ValidatedComponent = withValidation(
+    EndpointSelectionStep,
+    () => {
+      if (!selectedEndpoints || selectedEndpoints.length === 0) {
+        console.log("Endpoint validation failed: No endpoints selected");
+        return { valid: false, message: 'Please select at least one endpoint to test' };
+      }
+      console.log("Endpoint validation passed:", selectedEndpoints.length, "endpoints selected");
+      return { valid: true };
+    }
+  );
+  
+  return <ValidatedComponent />;
+};
+
+// Test Config Step with validation
+const TestConfigWithValidation = () => {
+  const { concurrentRequests } = useWizard();
+  
+  const ValidatedComponent = withValidation(
+    TestConfigStep,
+    () => {
+      if (!concurrentRequests || concurrentRequests <= 0) {
+        console.log("TestConfig validation failed: Invalid concurrent requests:", concurrentRequests);
+        return { valid: false, message: 'Please enter a valid number of concurrent requests' };
+      }
+      console.log("TestConfig validation passed:", concurrentRequests, "concurrent requests");
+      return { valid: true };
+    }
+  );
+  
+  return <ValidatedComponent />;
+};
 
 export function WizardDashboard() {
   const navigate = useNavigate();
@@ -44,9 +153,11 @@ export function WizardDashboard() {
   const handleSignOut = async () => {
     try {
       await signOut();
+      toast.success('Signed out successfully');
       navigate('/login');
     } catch (error) {
       console.error('Error signing out:', error);
+      toast.error('Failed to sign out. Please try again.');
     }
   };
 
@@ -79,35 +190,75 @@ export function WizardDashboard() {
       return;
     }
     
+    // Show loading toast
+    const loadingToast = toast.loading('Creating new test...');
+    
     try {
-      if (currentUserEmail) {
-        // Create a new test session in the database
-        const newSession = await apiService.createTestSession(
-          currentUserEmail,
-          testDetails.name,
-          testDetails.description,
-          testDetails.recurrence
-        );
-        
-        // Select the newly created session
-        setSelectedSessionId(newSession.id);
-        
-        // Refresh the sessions list to include the new session
-        await fetchSessions();
-        
-        // Log success for debugging
-        console.log(`Created new test: ${newSession.name} with ID ${newSession.id}`);
+      if (!currentUserEmail) {
+        toast.error('User email is missing. Please try logging in again.');
+        toast.dismiss(loadingToast);
+        return;
       }
-    } catch (error) {
-      console.error('Error creating new test:', error);
-      alert('Failed to create new test. Please try again.');
       
-      // Fall back to a blank test
-      setSelectedSessionId('new');
+      console.log('Creating test for user:', currentUserEmail);
+      
+      // Create a new test session in the database
+      const newSession = await apiService.createTestSession(
+        currentUserEmail,
+        testDetails.name,
+        testDetails.description,
+        testDetails.recurrence
+      );
+      
+      // Dismiss loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success(`Test "${testDetails.name}" created successfully`);
+      
+      // Select the newly created session
+      setSelectedSessionId(newSession.id);
+      
+      // Refresh the sessions list to include the new session
+      await fetchSessions();
+      
+      // Log success for debugging
+      console.log(`Created new test: ${newSession.name} with ID ${newSession.id}`);
+    } catch (error) {
+      // Dismiss loading toast and show error
+      toast.dismiss(loadingToast);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to create new test';
+        
+      console.error('Error creating new test:', error);
+      
+      // Only show error toast when not proceeding with fallback
+      if (errorMessage.includes('Invalid email') || 
+          errorMessage.includes('Required')) {
+        toast.error(errorMessage);
+      } else {
+        // We'll show a different toast since we're using the fallback
+        toast.error('Could not save test to server. Creating a local test instead.');
+        
+        // After a short delay, show an info toast
+        setTimeout(() => {
+          toast.success(`Test "${testDetails.name}" created locally`);
+        }, 1500);
+      }
+      
+      // Fall back to a new test with the provided details
+      // We'll use a pseudo-ID to identify it locally
+      const localId = `local_${new Date().getTime()}`;
+      
+      // Set the selected session ID to the local one
+      setSelectedSessionId(localId);
+      
+      console.log(`Created local test with ID: ${localId}`);
     }
   };
   
   const handleRenameTest = async (id: string, name: string, description: string) => {
+    const loadingToast = toast.loading('Updating test...');
     try {
       // Get the current session to preserve recurrence settings if they exist
       const currentSession = sessions.find(session => session.id === id);
@@ -116,6 +267,9 @@ export function WizardDashboard() {
       // Make an API call to update the test on the server
       await apiService.updateTestSession(id, name, description, recurrence);
       
+      toast.dismiss(loadingToast);
+      toast.success('Test updated successfully');
+      
       console.log(`Renamed test ${id} to ${name}`);
       
       // Refresh sessions list
@@ -123,55 +277,68 @@ export function WizardDashboard() {
       
       return Promise.resolve();
     } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error('Failed to update test');
       console.error('Error renaming test:', error);
       return Promise.reject(error);
     }
   };
 
   const handleDeleteTest = async (id: string) => {
+    const loadingToast = toast.loading('Deleting test...');
     try {
       // Make an API call to delete the test on the server
       await apiService.deleteTestSession(id);
+      
+      toast.dismiss(loadingToast);
+      toast.success('Test deleted successfully');
       
       // If the deleted session was selected, clear the selection
       if (selectedSessionId === id) {
         setSelectedSessionId(undefined);
       }
       
+      // Refresh sessions list
+      fetchSessions();
+      
       console.log(`Deleted test ${id}`);
       
       return Promise.resolve();
     } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error('Failed to delete test');
       console.error('Error deleting test:', error);
       return Promise.reject(error);
     }
   };
   
-  const steps = [
+  const steps: Step[] = [
     {
       id: 'api-config',
       title: 'API Configuration',
-      component: <ApiConfigStep />
+      component: <ApiConfigWithValidation />
     },
     {
       id: 'endpoint-selection',
       title: 'Select Endpoints',
-      component: <EndpointSelectionStep />
+      component: <EndpointSelectionWithValidation />
     },
     {
       id: 'test-config',
       title: 'Test Configuration',
-      component: <TestConfigStep />
+      component: <TestConfigWithValidation />
     },
     {
       id: 'review-launch',
       title: 'Review & Launch',
-      component: <ReviewLaunchStep />
+      component: <ReviewLaunchStep />,
+      optional: true  // Make this step optional since it's just review
     },
     {
       id: 'results',
       title: 'Test Results',
-      component: <ResultsStep />
+      component: <ResultsStep />,
+      optional: true  // This step shows results, should be optional
     }
   ];
   
@@ -188,9 +355,12 @@ export function WizardDashboard() {
       const data = await apiService.fetchUserSessions(currentUserEmail);
       if (data && Array.isArray(data.sessions)) {
         setSessions(data.sessions);
+      } else {
+        console.warn('Invalid sessions data:', data);
       }
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
+      toast.error('Failed to load your tests');
     }
   };
 
@@ -207,6 +377,32 @@ export function WizardDashboard() {
   
   return (
     <WizardProvider>
+      {/* Toast container */}
+      <Toaster 
+        position="bottom-left"
+        toastOptions={{
+          style: {
+            background: '#333',
+            color: '#fff',
+            borderRadius: '8px',
+          },
+          success: {
+            duration: 3000,
+            style: {
+              background: '#10B981',
+              color: '#fff',
+            },
+          },
+          error: {
+            duration: 5000,
+            style: {
+              background: '#EF4444',
+              color: '#fff',
+            },
+          },
+        }}
+      />
+      
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
         <nav className="bg-gradient-to-b from-gray-900 to-gray-800 border-b border-gray-700 text-white">
           <div className="container lg:px-12">

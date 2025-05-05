@@ -1,11 +1,21 @@
-import React, { useState, ReactNode } from 'react';
+import React, { useState, ReactElement, useEffect } from 'react';
 import { Button } from '../Button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { useWizard } from './WizardContext';
+
+// Define a validation function type
+export type ValidationResult = { valid: boolean; message?: string } | boolean;
+export type ValidateFunction = () => ValidationResult;
+
+// Update the component interface to include a validate function
+interface ComponentWithValidation extends React.FC {
+  validate?: ValidateFunction;
+}
 
 export type Step = {
   id: string;
   title: string;
-  component: ReactNode;
+  component: ReactElement;
   optional?: boolean;
 };
 
@@ -17,10 +27,127 @@ type StepWizardProps = {
 
 export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardProps) {
   const [currentStepIndex, setCurrentStepIndex] = useState(initialStep);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validatedSteps, setValidatedSteps] = useState<Record<string, boolean>>({});
+  const [isCurrentStepValid, setIsCurrentStepValid] = useState<boolean>(false);
+  
+  // Get wizard context to access form data
+  const wizardContext = useWizard();
+  
+  // Function to validate the current step
+  const validateCurrentStep = () => {
+    const currentStep = steps[currentStepIndex];
+    
+    // If the step is optional, it's always valid
+    if (currentStep.optional) {
+      setIsCurrentStepValid(true);
+      return true;
+    }
+
+    // Default to invalid until proven valid
+    let isValid = false;
+    
+    try {
+      // Get the component and try to access its validation function
+      const childElement = currentStep.component;
+      const childType = childElement.type as ComponentWithValidation;
+      
+      // If no validation function, assume it's valid
+      if (!childType.validate) {
+        setIsCurrentStepValid(true);
+        setValidationError(null);
+        return true;
+      }
+      
+      // Call the validate function
+      const result = childType.validate();
+      
+      if (typeof result === 'boolean') {
+        isValid = result;
+        
+        if (!result) {
+          setValidationError('Please complete all required fields in this step before continuing.');
+        } else {
+          setValidationError(null);
+          // Mark as validated
+          setValidatedSteps(prev => ({
+            ...prev,
+            [currentStep.id]: true
+          }));
+        }
+      } else {
+        isValid = result.valid;
+        
+        if (!result.valid) {
+          setValidationError(result.message || 'Please complete all required fields.');
+        } else {
+          setValidationError(null);
+          // Mark as validated
+          setValidatedSteps(prev => ({
+            ...prev,
+            [currentStep.id]: true
+          }));
+        }
+      }
+      
+      // Update state with validation result
+      setIsCurrentStepValid(isValid);
+      return isValid;
+    } catch (error) {
+      console.error("Validation error:", error);
+      setIsCurrentStepValid(false);
+      setValidationError("Error validating step. Please check console.");
+      return false;
+    }
+  };
+  
+  // Check validation whenever context data changes
+  useEffect(() => {
+    console.log("VALIDATION STATUS:", {
+      stepId: steps[currentStepIndex].id,
+      isStepValid: isCurrentStepValid,
+      isOptional: steps[currentStepIndex].optional,
+      isButtonDisabled: !isCurrentStepValid && !steps[currentStepIndex].optional
+    });
+
+    const timer = setTimeout(() => {
+      validateCurrentStep();
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [
+    wizardContext.baseUrl, 
+    wizardContext.authConfig,
+    JSON.stringify(wizardContext.authConfig),
+    wizardContext.selectedEndpoints,
+    wizardContext.concurrentRequests,
+    currentStepIndex,
+    isCurrentStepValid
+  ]);
+
+  // Force validation on initial render and step change
+  useEffect(() => {
+    // Run validation immediately when step changes
+    validateCurrentStep();
+    
+    // Also run validation again after a slight delay to make sure all component state is settled
+    const timer = setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [currentStepIndex]);
   
   const goToNextStep = () => {
+    const isValid = validateCurrentStep();
+    
+    if (!isValid && !steps[currentStepIndex].optional) {
+      return;
+    }
+    
     if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
+      setValidationError(null);
     } else {
       onComplete();
     }
@@ -29,12 +156,18 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
   const goToPreviousStep = () => {
     if (currentStepIndex > 0) {
       setCurrentStepIndex(currentStepIndex - 1);
+      setValidationError(null);
     }
   };
   
   const goToStep = (index: number) => {
-    if (index >= 0 && index < steps.length) {
+    if (
+      index >= 0 && 
+      index < steps.length && 
+      (index <= currentStepIndex || validatedSteps[steps[index-1]?.id])
+    ) {
       setCurrentStepIndex(index);
+      setValidationError(null);
     }
   };
   
@@ -47,38 +180,47 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
       {/* Progress Stepper */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          {steps.map((step, index) => (
-            <React.Fragment key={step.id}>
-              {/* Step Circle */}
-              <div 
-                className={`flex items-center justify-center w-8 h-8 rounded-full border-2 cursor-pointer ${
-                  index < currentStepIndex 
-                    ? 'bg-blue-500 border-blue-500 text-white' 
-                    : index === currentStepIndex 
-                      ? 'border-blue-500 text-blue-500' 
-                      : 'border-gray-300 text-gray-400'
-                }`}
-                onClick={() => index <= currentStepIndex && goToStep(index)}
-              >
-                {index < currentStepIndex ? (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <span className="text-sm">{index + 1}</span>
-                )}
-              </div>
-              
-              {/* Connector Line (except after last step) */}
-              {index < steps.length - 1 && (
+          {steps.map((step, index) => {
+            const isStepCompleted = index < currentStepIndex;
+            const isCurrentStep = index === currentStepIndex;
+            const isPreviousStepCompleted = validatedSteps[steps[index-1]?.id] || index <= currentStepIndex;
+            const isClickable = index <= currentStepIndex || (isPreviousStepCompleted && validatedSteps[steps[currentStepIndex]?.id]);
+            
+            return (
+              <React.Fragment key={step.id}>
+                {/* Step Circle */}
                 <div 
-                  className={`flex-1 h-0.5 mx-4 ${
-                    index < currentStepIndex ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                  className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
+                    isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                  } ${
+                    isStepCompleted 
+                      ? 'bg-blue-500 border-blue-500 text-white' 
+                      : isCurrentStep 
+                        ? 'border-blue-500 text-blue-500' 
+                        : 'border-gray-300 text-gray-400'
                   }`}
-                />
-              )}
-            </React.Fragment>
-          ))}
+                  onClick={() => isClickable && goToStep(index)}
+                >
+                  {isStepCompleted ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <span className="text-sm">{index + 1}</span>
+                  )}
+                </div>
+                
+                {/* Connector Line (except after last step) */}
+                {index < steps.length - 1 && (
+                  <div 
+                    className={`flex-1 h-0.5 mx-4 ${
+                      index < currentStepIndex ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
         
         {/* Step Titles */}
@@ -101,6 +243,14 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
         </div>
       </div>
       
+      {/* Validation Error */}
+      {validationError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
+          <AlertCircle className="h-5 w-5 text-red-500 mr-2 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700">{validationError}</p>
+        </div>
+      )}
+      
       {/* Current Step Content */}
       <div className="flex-1 mb-6">
         {currentStep.component}
@@ -118,9 +268,13 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
           Back
         </Button>
         
+        {/* Next/Complete button with highlighted disabled state */}
         <Button 
           onClick={goToNextStep}
-          className="flex items-center"
+          disabled={!isCurrentStepValid && !currentStep.optional}
+          className={`flex items-center ${!isCurrentStepValid && !currentStep.optional 
+            ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-300 hover:bg-gray-300 hover:text-gray-500 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-700' 
+            : ''}`}
         >
           {isLastStep ? 'Start Test' : 'Next'}
           {!isLastStep && <ChevronRight className="h-4 w-4 ml-1" />}

@@ -171,7 +171,13 @@ export class ApiService {
    */
   async fetchUserSessions(email: string) {
     try {
-      const response = await fetch(`http://localhost:8000/api/user/${encodeURIComponent(email)}/sessions`, {
+      if (!email || !email.trim() || !email.includes('@')) {
+        throw new Error('Invalid email address provided');
+      }
+      
+      console.log(`Fetching sessions for user: ${email}`);
+      
+      const response = await fetch(`/api/user/${encodeURIComponent(email)}/sessions`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -180,11 +186,35 @@ export class ApiService {
         credentials: 'include',
       });
 
+      // Specifically handle 404s - user not found
+      if (response.status === 404) {
+        throw new Error(`User not found for email: ${email}`);
+      }
+
       if (!response.ok) {
-        throw new Error(`Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`);
+        const errorText = await response.text();
+        let errorMessage = `Error fetching sessions: ${response.statusText || 'Unknown error'} (${response.status})`;
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.detail) {
+            errorMessage = errorData.detail;
+          }
+        } catch (e) {
+          // If parsing fails, use the raw text if available
+          if (errorText) errorMessage += `: ${errorText}`;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log(`Successfully fetched ${data.sessions?.length || 0} sessions for user: ${email}`);
+      
+      if (!data.user_id) {
+        console.warn(`Warning: User ID missing in response for ${email}`);
+      }
+      
       return data;
     } catch (error) {
       console.error('Error fetching user sessions:', error);
@@ -212,15 +242,66 @@ export class ApiService {
     }
   ) {
     try {
-      // First get the user ID from the email
-      const userData = await this.fetchUserSessions(email);
-      const userId = userData.user_id;
-      
-      if (!userId) {
-        throw new Error('User not found');
+      // Input validation
+      if (!email || !email.includes('@')) {
+        throw new Error('Invalid email address');
       }
       
-      const response = await fetch('http://localhost:8000/api/sessions', {
+      if (!name) {
+        throw new Error('Test name is required');
+      }
+      
+      console.log(`Creating test session for user: ${email} with name: ${name}`);
+      
+      // First try the direct session creation endpoint (new implementation)
+      try {
+        const directSession = await this.createDirectTestSession(email, name, description, recurrence);
+        console.log('Successfully created test session using direct API');
+        return directSession;
+      } catch (directError) {
+        console.error('Direct session creation failed:', directError);
+        console.log('Trying fallback method...');
+      }
+      
+      // Fallback to user lookup and creation flow
+      let userId;
+      
+      try {
+        // Try to get the user ID from the email
+        const userData = await this.fetchUserSessions(email);
+        userId = userData.user_id;
+      } catch (error) {
+        console.log(`User not found, creating a new user for email: ${email}`);
+        // If user not found, create a new user
+        const userResponse = await fetch('/api/users', {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: email,
+            name: email.split('@')[0], // Use part before @ as name
+          }),
+        });
+        
+        if (!userResponse.ok) {
+          throw new Error('Failed to create user account');
+        }
+        
+        const newUserData = await userResponse.json();
+        userId = newUserData.id;
+        console.log(`Created new user with ID: ${userId}`);
+      }
+      
+      if (!userId) {
+        throw new Error(`Cannot proceed: Unable to find or create user for email: ${email}`);
+      }
+      
+      console.log(`User ID for test creation: ${userId}`);
+      
+      const response = await fetch('/api/sessions', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -234,15 +315,58 @@ export class ApiService {
           recurrence
         }),
       });
-
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create test session');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create test session (${response.status})`);
       }
-
-      return await response.json();
+      
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error('Error creating test session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a test session directly with email (primary method)
+   * This method uses the new API endpoint that handles user synchronization
+   */
+  async createDirectTestSession(
+    email: string, 
+    name: string, 
+    description?: string,
+    recurrence?: any
+  ) {
+    try {
+      console.log(`Creating direct test session with email: ${email}, name: ${name}`);
+      
+      const response = await fetch('/api/sessions/direct', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          email,
+          name,
+          description,
+          recurrence
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create direct test session (${response.status})`);
+      }
+      
+      const data = await response.json();
+      console.log('Direct test session created successfully:', data);
+      return data;
+    } catch (error) {
+      console.error('Error creating direct test session:', error);
       throw error;
     }
   }
@@ -267,7 +391,7 @@ export class ApiService {
     }
   ) {
     try {
-      const response = await fetch(`http://localhost:8000/api/sessions/${sessionId}`, {
+      const response = await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: {
           'Accept': 'application/json',
@@ -300,7 +424,7 @@ export class ApiService {
    */
   async deleteTestSession(sessionId: string) {
     try {
-      const response = await fetch(`http://localhost:8000/api/sessions/${sessionId}`, {
+      const response = await fetch(`/api/sessions/${sessionId}`, {
         method: 'DELETE',
         headers: {
           'Accept': 'application/json',
@@ -329,7 +453,7 @@ export class ApiService {
    */
   async createSessionConfiguration(config: any, userEmail: string) {
     try {
-      const response = await fetch(`http://localhost:8000/api/sessions/configuration?user_email=${encodeURIComponent(userEmail)}`, {
+      const response = await fetch(`/api/sessions/configuration?user_email=${encodeURIComponent(userEmail)}`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

@@ -83,13 +83,13 @@ export function ReviewLaunchStep() {
         break;
         
       case 'custom_headers':
-        if (authJson) {
-          try {
-            JSON.parse(authJson);
-          } catch (error) {
-            setValidationError('Authentication headers contain invalid JSON');
-            return false;
-          }
+    if (authJson) {
+      try {
+        JSON.parse(authJson);
+      } catch (error) {
+        setValidationError('Authentication headers contain invalid JSON');
+        return false;
+      }
         }
         break;
     }
