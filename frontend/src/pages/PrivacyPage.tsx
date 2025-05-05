@@ -40,7 +40,7 @@ export function PrivacyPage() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Privacy Policy</h1>
           </div>
           
-          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300">
+          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 space-y-10">
             <p className="lead text-lg">Last updated: May 5, 2025</p>
             
             <p>
@@ -48,7 +48,7 @@ export function PrivacyPage() {
               disclose, and safeguard your information when you use our service.
             </p>
             
-            <h2>Information We Collect</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 border-b pb-2 border-gray-200 dark:border-gray-700">Information We Collect</h2>
             <p>
               We collect information that you provide directly to us when you:
             </p>
@@ -82,11 +82,13 @@ export function PrivacyPage() {
             </ul>
             
             <h2>Data Storage and Security</h2>
-            <p>
-              We implement appropriate technical and organizational measures to protect your personal information 
-              against unauthorized access, alteration, disclosure, or destruction. Your data is stored securely 
-              on our servers and is only accessible to authorized personnel.
-            </p>
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
+              <p>
+                We implement appropriate technical and organizational measures to protect your personal information 
+                against unauthorized access, alteration, disclosure, or destruction. Your data is stored securely 
+                on our servers and is only accessible to authorized personnel.
+              </p>
+            </div>
             
             <h2>Data Retention</h2>
             <p>
@@ -104,7 +106,7 @@ export function PrivacyPage() {
             <p>
               We do not:
             </p>
-            <ul>
+            <ul className="list-disc pl-6 space-y-2 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg my-4">
               <li>Share your API data with third parties</li>
               <li>Use your API data for any purpose other than providing our service</li>
               <li>Retain API credentials longer than necessary to perform the requested tests</li>
@@ -131,13 +133,31 @@ export function PrivacyPage() {
             <p>
               Depending on your location, you may have certain rights regarding your personal information, including:
             </p>
-            <ul>
-              <li>The right to access your personal information</li>
-              <li>The right to correct inaccurate or incomplete information</li>
-              <li>The right to delete your personal information</li>
-              <li>The right to restrict or object to the processing of your personal information</li>
-              <li>The right to data portability</li>
-              <li>The right to withdraw consent at any time</li>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg my-4">
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to access your personal information</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to correct inaccurate or incomplete information</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to delete your personal information</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to restrict or object to the processing of your personal information</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to data portability</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>The right to withdraw consent at any time</span>
+              </li>
             </ul>
             <p>
               To exercise these rights, please contact us at <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline">ehmyitayew@college.harvard.edu</a>.
@@ -157,12 +177,13 @@ export function PrivacyPage() {
               this Privacy Policy periodically for any changes.
             </p>
             
-            <h2>Contact Us</h2>
-            <p>
-              If you have any questions about this Privacy Policy, please contact us at:
-              <br />
-              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline">ehmyitayew@college.harvard.edu</a>
-            </p>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mt-10 text-center">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Contact Us</h2>
+              <p>
+                If you have any questions about this Privacy Policy, please contact us at:
+              </p>
+              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline inline-block mt-2 text-lg font-medium">ehmyitayew@college.harvard.edu</a>
+            </div>
           </div>
         </div>
       </div>

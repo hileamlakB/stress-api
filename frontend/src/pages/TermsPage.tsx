@@ -40,26 +40,26 @@ export function TermsPage() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Terms of Service</h1>
           </div>
           
-          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300">
+          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 space-y-10">
             <p className="lead text-lg">Last updated: May 5, 2025</p>
             
             <p>
               Please read these Terms of Service ("Terms") carefully before using the FastAPI Stress Tester service.
             </p>
             
-            <h2>1. Agreement to Terms</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">1. Agreement to Terms</h2>
             <p>
               By accessing or using our service, you agree to be bound by these Terms. If you disagree with any part of the terms, 
               you may not access the service.
             </p>
             
-            <h2>2. Description of Service</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">2. Description of Service</h2>
             <p>
               FastAPI Stress Tester provides load testing tools for FastAPI applications. Our service allows users to 
               simulate traffic to their APIs, measure performance, and identify bottlenecks.
             </p>
             
-            <h2>3. User Accounts</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">3. User Accounts</h2>
             <p>
               When you create an account with us, you must provide accurate, complete, and current information. You are responsible 
               for safeguarding the password and for all activities that occur under your account.
@@ -69,27 +69,42 @@ export function TermsPage() {
               aware of any breach of security or unauthorized use of your account.
             </p>
             
-            <h2>4. Acceptable Use Policy</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">4. Acceptable Use Policy</h2>
             <p>
               You agree not to use FastAPI Stress Tester for any purpose that is illegal or prohibited by these Terms. 
               Specifically, you agree not to:
             </p>
-            <ul>
-              <li>Use our service to conduct stress tests against systems that you do not own or have explicit permission to test</li>
-              <li>Attempt to bypass any rate limiting or security measures</li>
-              <li>Use our service to distribute malware or conduct malicious activities</li>
-              <li>Interfere with or disrupt the service or servers or networks connected to the service</li>
-              <li>Violate any applicable laws or regulations</li>
+            <ul className="bg-red-50 dark:bg-red-900/10 p-4 rounded-lg space-y-2 my-4">
+              <li className="flex items-start">
+                <span className="text-red-500 mr-2">✕</span>
+                <span>Use our service to conduct stress tests against systems that you do not own or have explicit permission to test</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-500 mr-2">✕</span>
+                <span>Attempt to bypass any rate limiting or security measures</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-500 mr-2">✕</span>
+                <span>Use our service to distribute malware or conduct malicious activities</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-500 mr-2">✕</span>
+                <span>Interfere with or disrupt the service or servers or networks connected to the service</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-red-500 mr-2">✕</span>
+                <span>Violate any applicable laws or regulations</span>
+              </li>
             </ul>
             
-            <h2>5. API Usage</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">5. API Usage</h2>
             <p>
               When using our service to test your APIs, you are responsible for ensuring that you have the right to conduct 
               such tests. FastAPI Stress Tester is not responsible for any damages or disruptions that may occur to your 
               systems as a result of using our service.
             </p>
             
-            <h2>6. Intellectual Property</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">6. Intellectual Property</h2>
             <p>
               The service and its original content, features, and functionality are and will remain the exclusive property of 
               FastAPI Stress Tester and its licensors. The service is protected by copyright, trademark, and other laws.
@@ -99,14 +114,14 @@ export function TermsPage() {
               written consent of FastAPI Stress Tester.
             </p>
             
-            <h2>7. User Content</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">7. User Content</h2>
             <p>
               When you provide data for stress testing, you retain all rights to your content. By uploading content to our service, 
               you grant us a worldwide, non-exclusive, royalty-free license to use, store, and process that content solely for 
               the purpose of providing our service to you.
             </p>
             
-            <h2>8. Termination</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">8. Termination</h2>
             <p>
               We may terminate or suspend your account immediately, without prior notice or liability, for any reason, including 
               without limitation if you breach the Terms.
@@ -116,43 +131,56 @@ export function TermsPage() {
               you may simply discontinue using the service or contact us to request account deletion.
             </p>
             
-            <h2>9. Limitation of Liability</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">9. Limitation of Liability</h2>
             <p>
               In no event shall FastAPI Stress Tester, nor its directors, employees, partners, agents, suppliers, or affiliates, 
               be liable for any indirect, incidental, special, consequential or punitive damages, including without limitation, 
               loss of profits, data, use, goodwill, or other intangible losses, resulting from:
             </p>
-            <ul>
-              <li>Your use or inability to use the service</li>
-              <li>Any conduct or content of any third party on the service</li>
-              <li>Any content obtained from the service</li>
-              <li>Unauthorized access, use, or alteration of your transmissions or content</li>
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg my-4">
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>Your use or inability to use the service</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>Any conduct or content of any third party on the service</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>Any content obtained from the service</span>
+              </li>
+              <li className="flex items-start space-x-2">
+                <span className="text-blue-500 font-bold">•</span>
+                <span>Unauthorized access, use, or alteration of your transmissions or content</span>
+              </li>
             </ul>
             
-            <h2>10. Disclaimer</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">10. Disclaimer</h2>
             <p>
               Your use of the service is at your sole risk. The service is provided on an "AS IS" and "AS AVAILABLE" basis. 
               The service is provided without warranties of any kind, whether express or implied.
             </p>
             
-            <h2>11. Governing Law</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">11. Governing Law</h2>
             <p>
               These Terms shall be governed and construed in accordance with the laws of the United States, without regard 
               to its conflict of law provisions.
             </p>
             
-            <h2>12. Changes to Terms</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">12. Changes to Terms</h2>
             <p>
               We reserve the right, at our sole discretion, to modify or replace these Terms at any time. By continuing to access 
               or use our service after those revisions become effective, you agree to be bound by the revised terms.
             </p>
             
-            <h2>13. Contact Us</h2>
-            <p>
-              If you have any questions about these Terms, please contact us at:
-              <br />
-              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline">ehmyitayew@college.harvard.edu</a>
-            </p>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mt-10 text-center">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">13. Contact Us</h2>
+              <p>
+                If you have any questions about these Terms, please contact us at:
+              </p>
+              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline inline-block mt-2 text-lg font-medium">ehmyitayew@college.harvard.edu</a>
+            </div>
           </div>
         </div>
       </div>

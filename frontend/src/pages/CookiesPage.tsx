@@ -40,7 +40,7 @@ export function CookiesPage() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Cookie Policy</h1>
           </div>
           
-          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300">
+          <div className="prose prose-lg max-w-none dark:prose-invert text-gray-700 dark:text-gray-300 space-y-10">
             <p className="lead text-lg">Last updated: May 5, 2025</p>
             
             <p>
@@ -49,7 +49,7 @@ export function CookiesPage() {
               we use them, as well as your rights to control our use of them.
             </p>
             
-            <h2>What Are Cookies?</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">What Are Cookies?</h2>
             <p>
               Cookies are small data files that are placed on your computer or mobile device when you visit a website. 
               Cookies are widely used by website owners to make their websites work, or to work more efficiently, 
@@ -62,7 +62,7 @@ export function CookiesPage() {
               interactive content, and analytics).
             </p>
             
-            <h2>Why Do We Use Cookies?</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">Why Do We Use Cookies?</h2>
             <p>
               We use first-party and third-party cookies for several reasons. Some cookies are required for technical 
               reasons for our website to operate, and we refer to these as "essential" or "necessary" cookies. 
@@ -70,29 +70,30 @@ export function CookiesPage() {
               Third parties serve cookies through our website for analytics and other purposes.
             </p>
             
-            <h2>Types of Cookies We Use</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">Types of Cookies We Use</h2>
             
-            <h3>Essential Cookies</h3>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-blue-300 mt-6">Essential Cookies</h3>
             <p>
               These cookies are strictly necessary to provide you with services available through our website and to use 
               some of its features, such as access to secure areas. Because these cookies are strictly necessary to deliver 
               the website, you cannot refuse them without impacting how our website functions.
             </p>
             
-            <h3>Performance and Functionality Cookies</h3>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-blue-300 mt-6">Performance and Functionality Cookies</h3>
             <p>
               These cookies are used to enhance the performance and functionality of our website but are non-essential to 
               their use. However, without these cookies, certain functionality may become unavailable.
             </p>
             
-            <h3>Analytics and Customization Cookies</h3>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-blue-300 mt-6">Analytics and Customization Cookies</h3>
             <p>
               These cookies collect information that is used either in aggregate form to help us understand how our website 
               is being used or how effective our marketing campaigns are, or to help us customize our website for you.
             </p>
             
-            <h2>Specific Cookies We Use</h2>
-            <table className="w-full border-collapse mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">Specific Cookies We Use</h2>
+            <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-sm p-2 my-4">
+              <table className="w-full border-collapse mb-0">
               <thead>
                 <tr className="bg-gray-100 dark:bg-gray-800">
                   <th className="border border-gray-300 dark:border-gray-700 px-4 py-2 text-left">Cookie Name</th>
@@ -123,8 +124,9 @@ export function CookiesPage() {
                 </tr>
               </tbody>
             </table>
+            </div>
             
-            <h2>How to Control Cookies</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">How to Control Cookies</h2>
             <p>
               You can set or amend your web browser controls to accept or refuse cookies. If you choose to reject cookies, 
               you may still use our website though your access to some functionality and areas of our website may be restricted.
@@ -134,27 +136,40 @@ export function CookiesPage() {
               including how to see what cookies have been set, visit <a href="https://www.allaboutcookies.org" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">www.allaboutcookies.org</a>.
             </p>
             
-            <h3>Browser-Specific Instructions</h3>
-            <ul>
-              <li><strong>Chrome:</strong> Settings → Privacy and security → Cookies and other site data</li>
-              <li><strong>Safari:</strong> Preferences → Privacy → Cookies and website data</li>
-              <li><strong>Firefox:</strong> Options → Privacy & Security → Cookies and Site Data</li>
-              <li><strong>Edge:</strong> Settings → Cookies and site permissions → Cookies and site data</li>
-            </ul>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-blue-300 mt-6">Browser-Specific Instructions</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg my-4">
+              <div className="p-3 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-900">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-2">Chrome</h4>
+                <p className="text-sm">Settings → Privacy and security → Cookies and other site data</p>
+              </div>
+              <div className="p-3 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-900">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-2">Safari</h4>
+                <p className="text-sm">Preferences → Privacy → Cookies and website data</p>
+              </div>
+              <div className="p-3 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-900">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-2">Firefox</h4>
+                <p className="text-sm">Options → Privacy & Security → Cookies and Site Data</p>
+              </div>
+              <div className="p-3 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-900">
+                <h4 className="font-bold text-gray-900 dark:text-white mb-2">Edge</h4>
+                <p className="text-sm">Settings → Cookies and site permissions → Cookies and site data</p>
+              </div>
+            </div>
             
-            <h2>Updates to This Cookie Policy</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">Updates to This Cookie Policy</h2>
             <p>
               We may update this Cookie Policy from time to time to reflect changes in technology, law, our business operations, 
               or any other reason we may deem necessary or appropriate. We will notify you of any changes by posting the new 
               Cookie Policy on this page and updating the "Last updated" date.
             </p>
             
-            <h2>Contact Us</h2>
-            <p>
-              If you have any questions about our use of cookies or this Cookie Policy, please contact us at:
-              <br />
-              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline">ehmyitayew@college.harvard.edu</a>
-            </p>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 mt-10 text-center">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Contact Us</h2>
+              <p>
+                If you have any questions about our use of cookies or this Cookie Policy, please contact us at:
+              </p>
+              <a href="mailto:ehmyitayew@college.harvard.edu" className="text-blue-600 dark:text-blue-400 hover:underline inline-block mt-2 text-lg font-medium">ehmyitayew@college.harvard.edu</a>
+            </div>
           </div>
         </div>
       </div>
