@@ -85,8 +85,8 @@ export function LandingPage() {
               className="animate-pulse"
               onClick={() => handleNavigation('/register')}
             >
-              Get Started
-            </Button>
+                Get Started
+              </Button>
           </div>
         </div>
 

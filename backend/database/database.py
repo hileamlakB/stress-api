@@ -1,24 +1,35 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import logging
+import sys
 import os
 from pathlib import Path
 
-# Create database directory if it doesn't exist
-db_dir = Path(__file__).parent.parent / "data"
-db_dir.mkdir(exist_ok=True)
+# Add parent directory to path so 'backend' is recognized
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# Database URL
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_dir}/stress_api.db"
+from backend.config.settings import DATABASE_URL
 
-# Create SQLite engine
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create PostgreSQL engine with appropriate configuration
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False}  # Needed for SQLite
+    DATABASE_URL,
+    pool_size=5,  # Adjust based on your needs
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800  # Recycle connections after 30 minutes
 )
+logger.info("Connected to PostgreSQL database")
 
 # Create sessionmaker
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for models
+Base = declarative_base()
 
 # Dependency to get DB session
 def get_db():

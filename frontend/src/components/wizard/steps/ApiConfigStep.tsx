@@ -5,6 +5,115 @@ import { useWizard } from '../WizardContext';
 import { AuthMethod, AuthConfig } from '../WizardContext';
 import { JsonEditor } from '../../JsonEditor';
 
+// Function to validate authentication configuration
+export const validateAuthConfig = (config: AuthConfig, baseUrl: string): { valid: boolean; message?: string } => {
+  // Check if base URL is provided
+  if (!baseUrl || !baseUrl.trim()) {
+    return { valid: false, message: 'Please enter a base URL for the API' };
+  }
+
+  // For 'none' authentication, no additional validation needed
+  if (config.method === 'none') {
+    return { valid: true };
+  }
+
+  // Validate API Key authentication
+  if (config.method === 'api_key') {
+    if (!config.apiKey || !config.apiKey.key || !config.apiKey.key.trim()) {
+      return { valid: false, message: 'Please enter an API key name' };
+    }
+    if (!config.apiKey.value || !config.apiKey.value.trim()) {
+      return { valid: false, message: 'Please enter an API key value' };
+    }
+    return { valid: true };
+  }
+
+  // Validate Bearer Token authentication
+  if (config.method === 'bearer_token') {
+    if (config.multipleTokens) {
+      // Check if at least one token is provided
+      if (!config.tokensList || config.tokensList.length === 0) {
+        return { valid: false, message: 'Please add at least one bearer token' };
+      }
+      
+      // Check if any token is empty
+      const hasEmptyToken = config.tokensList.some(token => !token || !token.trim());
+      if (hasEmptyToken) {
+        return { valid: false, message: 'Please fill in all bearer tokens' };
+      }
+    } else {
+      // Single token validation
+      if (!config.bearerToken || !config.bearerToken.trim()) {
+        return { valid: false, message: 'Please enter a bearer token' };
+      }
+    }
+    return { valid: true };
+  }
+
+  // Validate Basic Authentication
+  if (config.method === 'basic_auth') {
+    if (config.multipleBasicAuth) {
+      // Check if at least one credential is provided
+      if (!config.basicAuthList || config.basicAuthList.length === 0) {
+        return { valid: false, message: 'Please add at least one set of credentials' };
+      }
+      
+      // Check if any credential is incomplete
+      const hasIncompleteCredential = config.basicAuthList.some(
+        auth => !auth.username || !auth.username.trim() || !auth.password || !auth.password.trim()
+      );
+      if (hasIncompleteCredential) {
+        return { valid: false, message: 'Please complete all username and password fields' };
+      }
+    } else {
+      // Single credential validation
+      if (!config.basicAuth || !config.basicAuth.username || !config.basicAuth.username.trim()) {
+        return { valid: false, message: 'Please enter a username' };
+      }
+      if (!config.basicAuth.password || !config.basicAuth.password.trim()) {
+        return { valid: false, message: 'Please enter a password' };
+      }
+    }
+    return { valid: true };
+  }
+
+  // Validate Session Cookie authentication
+  if (config.method === 'session_cookie') {
+    if (!config.sessionCookie || !config.sessionCookie.loginUrl || !config.sessionCookie.loginUrl.trim()) {
+      return { valid: false, message: 'Please enter a login endpoint URL' };
+    }
+
+    if (config.sessionCookie.multipleAccounts) {
+      // Check if at least one account is provided
+      if (!config.sessionCookie.accountsList || config.sessionCookie.accountsList.length === 0) {
+        return { valid: false, message: 'Please add at least one account' };
+      }
+      
+      // Check if any account is empty (no credentials)
+      const hasEmptyAccount = config.sessionCookie.accountsList.some(
+        account => !account || Object.keys(account).length === 0
+      );
+      if (hasEmptyAccount) {
+        return { valid: false, message: 'Please provide credentials for all accounts' };
+      }
+    } else {
+      // Single account validation
+      if (!config.sessionCookie.credentials || Object.keys(config.sessionCookie.credentials).length === 0) {
+        return { valid: false, message: 'Please provide login credentials' };
+      }
+    }
+    return { valid: true };
+  }
+
+  // Validate Custom Headers
+  if (config.method === 'custom_headers') {
+    // Currently, we're not requiring specific headers, but we could add validation if needed
+    return { valid: true };
+  }
+
+  return { valid: true };
+};
+
 export function ApiConfigStep() {
   const { 
     baseUrl, 
@@ -20,6 +129,23 @@ export function ApiConfigStep() {
   const [showAuthConfig, setShowAuthConfig] = useState(false);
   const [authError, setAuthError] = useState('');
   const [showAuthDropdown, setShowAuthDropdown] = useState(false);
+  
+  // Log validation status on mount and when key values change
+  useEffect(() => {
+    const result = validateAuthConfig(authConfig, baseUrl);
+    console.log("ApiConfigStep validation check:", {
+      baseUrl,
+      authMethod: authConfig.method,
+      isValid: result.valid,
+      message: result.message,
+      sessionCookie: authConfig.sessionCookie ? {
+        hasLoginUrl: !!authConfig.sessionCookie.loginUrl,
+        hasCredentials: !!authConfig.sessionCookie.credentials,
+        hasMultipleAccounts: authConfig.sessionCookie.multipleAccounts,
+        accountsCount: authConfig.sessionCookie.accountsList?.length || 0
+      } : null
+    });
+  }, [baseUrl, authConfig, authConfig.method]);
   
   // Check if authentication is already configured
   useEffect(() => {
@@ -66,7 +192,7 @@ export function ApiConfigStep() {
     }
   };
   
-  // Add description for each authentication method
+  // Get auth method description
   const getAuthMethodDescription = (method: AuthMethod): string => {
     switch (method) {
       case 'api_key':
@@ -94,7 +220,7 @@ export function ApiConfigStep() {
         JSON.parse(value);
       }
       
-      setAuthJson(value);
+    setAuthJson(value);
       setAuthError('');
       validateAuthJson(value);
     } catch (error) {

@@ -352,15 +352,15 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       
       <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3">
         <div className="mb-2 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
-          <p>
+        <p>
             {sessions.length} test{sessions.length !== 1 ? 's' : ''} available
-          </p>
-          {!loading && !error && sessions.length > 0 && (
-            <span className="text-blue-600 text-xs">
-              {selectedSessionId ? '1 selected' : 'None selected'}
-            </span>
-          )}
-        </div>
+        </p>
+        {!loading && !error && sessions.length > 0 && (
+          <span className="text-blue-600 text-xs">
+            {selectedSessionId ? '1 selected' : 'None selected'}
+          </span>
+        )}
+      </div>
         <Button 
           onClick={handleCreateButtonClick} 
           className="w-full flex items-center justify-center"

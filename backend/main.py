@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
@@ -10,6 +10,12 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import random
 import json
+import sys
+import os
+from pathlib import Path
+
+# Add parent directory to path so 'backend' is recognized
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -49,8 +55,8 @@ from api_models import (
     TestResultsResponse  # New import
 )
 from metrics_generator import metrics_manager
-from database.database import get_db
-from database.crud import (
+from backend.database.database import get_db
+from backend.database.crud import (
     get_user_by_email, 
     get_user_sessions as get_db_user_sessions, 
     get_session_configs, 
@@ -67,9 +73,69 @@ from database.crud import (
     get_filtered_user_test_results_count,  # New import
     update_test_result,  # New import
     update_session,  # New import
-    delete_session  # New import
+    delete_session,  # New import
+    create_user  # Import for user creation
 )
 from sqlalchemy.orm import Session
+
+# Import our new services
+# from services.user_sync_service import user_sync_service
+# from services.auth_middleware import add_auth_middleware
+from backend.config.settings import CORS_ORIGINS  # Keep this, but remove USER_SYNC_INTERVAL_HOURS
+
+# Add this new import and dependency function
+from backend.services.supabase_service import supabase_service
+
+async def verify_email_confirmed(authorization: str = Header(None)):
+    """Dependency to check if a user's email is verified"""
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header"
+        )
+    
+    try:
+        # Extract the token from the header
+        token = authorization.replace("Bearer ", "")
+        
+        # Get the user via Supabase service
+        user_id = None
+        
+        # Check the token with Supabase
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{supabase_service.supabase_url}/auth/v1/user",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "apikey": supabase_service.service_key
+                }
+            )
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                user_id = user_data.get("id")
+                email_confirmed_at = user_data.get("email_confirmed_at")
+                
+                # If email is not confirmed, reject access
+                if not email_confirmed_at:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Email not verified. Please check your email for a verification link."
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token"
+                )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying user email confirmation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed"
+        )
 
 # Session configuration models
 class SessionConfigModel(BaseModel):
@@ -119,6 +185,13 @@ class CreateSessionRequest(BaseModel):
     description: Optional[str] = None
     recurrence: Optional[Dict[str, Any]] = None
 
+# Request model for creating a session directly with email
+class CreateDirectSessionRequest(BaseModel):
+    email: str
+    name: str
+    description: Optional[str] = None
+    recurrence: Optional[Dict[str, Any]] = None
+
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
     description="Backend service for the FastAPI Stress Testing tool",
@@ -128,7 +201,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Frontend development server
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -393,7 +466,7 @@ async def generate_sample_data(endpoint: EndpointSchema):
 
 # Endpoint to start stress test
 @app.post("/api/test/start", response_model=TestStartResponse)
-async def start_test(config: TestConfigRequest, db: Session = Depends(get_db)):
+async def start_test(config: TestConfigRequest, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         test_id = str(uuid.uuid4())
         
@@ -467,7 +540,7 @@ async def start_test(config: TestConfigRequest, db: Session = Depends(get_db)):
 
 # Endpoint to get test results
 @app.get("/api/test/{test_id}/results", response_model=TestResultsResponse)
-async def get_test_results(test_id: str, db: Session = Depends(get_db)):
+async def get_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         if test_id not in stress_tester.results:
             raise HTTPException(
@@ -525,7 +598,7 @@ async def get_test_results(test_id: str, db: Session = Depends(get_db)):
 
 # Endpoint to stop ongoing test
 @app.post("/api/test/{test_id}/stop", response_model=TestStopResponse)
-async def stop_test(test_id: str, db: Session = Depends(get_db)):
+async def stop_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         if test_id not in stress_tester.active_tests:
             raise HTTPException(
@@ -580,7 +653,7 @@ async def stop_test(test_id: str, db: Session = Depends(get_db)):
 
 # Endpoint to start an advanced stress test with multiple strategies
 @app.post("/api/stress-test/start", response_model=TestStartResponse)
-async def start_advanced_test(config: StressTestConfig, db: Session = Depends(get_db)):
+async def start_advanced_test(config: StressTestConfig, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         test_id = str(uuid.uuid4())
         
@@ -690,7 +763,7 @@ async def start_advanced_test(config: StressTestConfig, db: Session = Depends(ge
 
 # Endpoint to get advanced test results
 @app.get("/api/stress-test/{test_id}/results", response_model=StressTestResultsResponse)
-async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db)):
+async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         if test_id not in stress_tester.results:
             raise HTTPException(
@@ -789,7 +862,7 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db))
 
 # Endpoint to stop an advanced test
 @app.post("/api/stress-test/{test_id}/stop", response_model=TestStopResponse)
-async def stop_advanced_test(test_id: str, db: Session = Depends(get_db)):
+async def stop_advanced_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         if test_id not in stress_tester.active_tests:
             raise HTTPException(
@@ -846,7 +919,7 @@ async def stop_advanced_test(test_id: str, db: Session = Depends(get_db)):
 
 # Endpoint to get user sessions
 @app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
-async def get_user_sessions(email: str, db: Session = Depends(get_db)):
+async def get_user_sessions(email: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         # Get the user by email
         user = get_user_by_email(db, email)
@@ -917,7 +990,8 @@ async def get_filtered_test_results(
     end_date: Optional[datetime] = None,
     limit: int = 50,
     offset: int = 0,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
 ):
     try:
         # Get filtered test results
@@ -1027,20 +1101,28 @@ async def get_test_result_by_id(result_id: str, db: Session = Depends(get_db)):
             detail=f"Error getting test result: {str(e)}"
         )
 
-# Endpoint to create a session
-@app.post("/api/sessions", response_model=SessionModel)
-async def create_session_endpoint(request: CreateSessionRequest, db: Session = Depends(get_db)):
+# Endpoint to create a session directly with email
+@app.post("/api/sessions/direct", response_model=SessionModel)
+async def create_direct_session_endpoint(
+    request: CreateDirectSessionRequest, 
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Create a session directly with user email, checking Supabase auth"""
     try:
-        # Convert user_id string to UUID
-        user_id = uuid.UUID(request.user_id)
+        # Check if user exists in our database
+        user = get_user_by_email(db, request.email)
+        
+        if not user:
+            # Create the user in our database
+            user = create_user(db, request.email)
+            logger.info(f"Created user with email {request.email} in database")
         
         # Create the session
-        session = create_session(db, user_id, request.name, request.description)
+        session = create_session(db, user.id, request.name, request.description)
         
         # Store recurrence data as part of success_criteria if provided
         if request.recurrence:
-            # For now, we can store this in the session model
-            # In a real implementation, you might want to add a dedicated table
             # Create an empty configuration to store recurrence data
             config = create_session_config(
                 db, 
@@ -1084,122 +1166,14 @@ async def create_session_endpoint(request: CreateSessionRequest, db: Session = D
             configurations=config_models
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error creating session: {str(e)}", exc_info=True)
+        logger.error(f"Error creating direct session: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating session: {str(e)}"
         )
 
-# Endpoint to update a session
-@app.patch("/api/sessions/{session_id}", response_model=SessionModel)
-async def update_session_endpoint(
-    session_id: str, 
-    request: CreateSessionRequest, 
-    db: Session = Depends(get_db)
-):
-    try:
-        # Convert session_id string to UUID
-        session_uuid = uuid.UUID(session_id)
-        
-        # Update the session
-        session = update_session(db, session_uuid, request.name, request.description)
-        
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session with ID {session_id} not found"
-            )
-        
-        # Update recurrence data if provided
-        if request.recurrence:
-            # Get existing configurations
-            configs = get_session_configs(db, session_uuid)
-            
-            if configs:
-                # Update the first configuration with new recurrence data
-                config = configs[0]
-                success_criteria = config.success_criteria or {}
-                success_criteria["recurrence"] = request.recurrence
-                
-                # Update the configuration
-                config.success_criteria = success_criteria
-                db.commit()
-            else:
-                # Create a new configuration with recurrence data
-                create_session_config(
-                    db, 
-                    session.id, 
-                    endpoint_url="placeholder", 
-                    http_method="GET",
-                    concurrent_users=1,
-                    ramp_up_time=0,
-                    test_duration=0,
-                    think_time=0,
-                    success_criteria={"recurrence": request.recurrence}
-                )
-        
-        # Get the updated session with configurations
-        configs = get_session_configs(db, session.id)
-        config_models = [
-            SessionConfigModel(
-                id=str(config.id),
-                session_id=str(config.session_id),
-                endpoint_url=config.endpoint_url,
-                http_method=config.http_method,
-                request_headers=config.request_headers,
-                request_body=config.request_body,
-                request_params=config.request_params,
-                concurrent_users=config.concurrent_users,
-                ramp_up_time=config.ramp_up_time,
-                test_duration=config.test_duration,
-                think_time=config.think_time,
-                success_criteria=config.success_criteria
-            )
-            for config in configs
-        ]
-        
-        # Return the session model
-        return SessionModel(
-            id=str(session.id),
-            name=session.name,
-            description=session.description,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-            configurations=config_models
-        )
-        
-    except Exception as e:
-        logger.error(f"Error updating session: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating session: {str(e)}"
-        )
-
-# Endpoint to delete a session
-@app.delete("/api/sessions/{session_id}")
-async def delete_session_endpoint(session_id: str, db: Session = Depends(get_db)):
-    try:
-        # Convert session_id string to UUID
-        session_uuid = uuid.UUID(session_id)
-        
-        # Delete the session
-        success = delete_session(db, session_uuid)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session with ID {session_id} not found"
-            )
-        
-        return {"success": True, "message": f"Session with ID {session_id} deleted successfully"}
-        
-    except Exception as e:
-        logger.error(f"Error deleting session: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session: {str(e)}"
-        )
-
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

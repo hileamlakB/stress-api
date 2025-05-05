@@ -1,17 +1,29 @@
+#!/usr/bin/env python3
+"""
+Script to initialize the database tables in Supabase.
+Run this script after setting up your .env file with PostgreSQL connection details.
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add parent directory to path so 'backend' is recognized
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import logging
 from sqlalchemy import inspect
-from database.database import engine, SessionLocal
-from database.models import Base, User
+from backend.database.database import engine, SessionLocal
+from backend.database.models import Base, User
 from datetime import datetime
-import asyncio
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def init_db():
+def init_database():
     """Initialize the database by creating all tables"""
-    logger.info("Creating database tables...")
+    logger.info("Creating database tables in PostgreSQL...")
     
     # Create all tables
     Base.metadata.create_all(bind=engine)
@@ -45,4 +57,4 @@ async def init_db():
     logger.info("Database initialization complete!")
 
 if __name__ == "__main__":
-    asyncio.run(init_db())
+    init_database() 
