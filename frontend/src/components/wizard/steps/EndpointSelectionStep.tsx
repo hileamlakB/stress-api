@@ -143,7 +143,10 @@ const EndpointList = React.memo(({
 });
 
 // Main component
-export function EndpointSelectionStep() {
+/**
+ * @param onStepNext - called by the wizard before advancing to the next step. Use to sync local selection to context.
+ */
+export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void } = {}) {
   const { 
     baseUrl,
     endpoints, 
@@ -511,18 +514,6 @@ export function EndpointSelectionStep() {
             {localSelectedKeys.size > 0 ? 
               `Selected ${localSelectedKeys.size} endpoint${localSelectedKeys.size === 1 ? '' : 's'}` : 
               'No endpoints selected yet. Please select at least one endpoint to continue.'}
-          </div>
-          
-          {/* CRITICAL: Sync selections to context on Next click */}
-          <div className="mt-6 flex justify-end">
-            <Button 
-              size="sm" 
-              variant="outline" 
-              onClick={syncSelectionToContext}
-              className="inline-flex items-center"
-            >
-              Save Selection
-            </Button>
           </div>
         </>
       )}

@@ -88,7 +88,7 @@ const ApiConfigWithValidation = () => {
 };
 
 // Endpoint Selection Step with validation
-const EndpointSelectionWithValidation = () => {
+const EndpointSelectionWithValidation = ({ onStepNext }: { onStepNext?: () => void }) => {
   const { selectedEndpoints } = useWizard();
   
   const ValidatedComponent = withValidation(
@@ -103,7 +103,8 @@ const EndpointSelectionWithValidation = () => {
     }
   );
   
-  return <ValidatedComponent />;
+  // Pass the onStepNext prop to EndpointSelectionStep
+  return <ValidatedComponent onStepNext={onStepNext} />;
 };
 
 // Test Config Step with validation

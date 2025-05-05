@@ -1,4 +1,4 @@
-import React, { useState, ReactElement, useEffect } from 'react';
+import React, { useState, ReactElement, useEffect, cloneElement } from 'react';
 import { Button } from '../Button';
 import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { useWizard } from './WizardContext';
@@ -191,16 +191,25 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
     }
   };
   
+  // Helper: call onStepNext if the step supports it
+  const callStepOnNext = async () => {
+    const currentStep = steps[currentStepIndex];
+    const childElement = currentStep.component;
+    // If the component has an onStepNext prop, call it
+    if (childElement.props && typeof childElement.props.onStepNext === 'function') {
+      await childElement.props.onStepNext();
+    }
+  };
+
   const goToNextStep = async () => {
     const isValid = validateCurrentStep();
-    
     if (!isValid && !steps[currentStepIndex].optional) {
       return;
     }
-    
+    // Call the step's onStepNext before saving state and moving on
+    await callStepOnNext();
     // Save the current state before moving to the next step
     await saveWizardState();
-    
     if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
       setValidationError(null);
@@ -233,7 +242,20 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
     }
   };
   
+  // Render the current step, injecting onStepNext if supported
   const currentStep = steps[currentStepIndex];
+  let stepComponent = currentStep.component;
+  if (stepComponent.props && 'onStepNext' in stepComponent.props) {
+    stepComponent = cloneElement(stepComponent, {
+      onStepNext: () => {
+        // For EndpointSelectionStep, sync local selection to context
+        if (typeof stepComponent.props.syncSelectionToContext === 'function') {
+          stepComponent.props.syncSelectionToContext();
+        }
+      }
+    });
+  }
+  
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === steps.length - 1;
   
@@ -315,7 +337,7 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
       
       {/* Current Step Content */}
       <div className="flex-1 mb-6">
-        {currentStep.component}
+        {stepComponent}
       </div>
       
       {/* Navigation Buttons */}
