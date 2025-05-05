@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { RefreshCw, Filter, Link } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { RefreshCw, Filter, Link, Info } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import apiService from '../../../services/ApiService';
@@ -10,15 +10,37 @@ export function EndpointSelectionStep() {
     endpoints, 
     setEndpoints,
     selectedEndpoints,
-    setSelectedEndpoints
+    setSelectedEndpoints,
+    activeEndpointTab,
+    setActiveEndpointTab,
+    endpointMethodFilter,
+    setEndpointMethodFilter
   } = useWizard();
 
   const [isLoadingEndpoints, setIsLoadingEndpoints] = useState(false);
   const [endpointFilter, setEndpointFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<string>('all');
-  const [filterByMethod, setFilterByMethod] = useState<string>('all');
   const [advancedFiltering, setAdvancedFiltering] = useState(false);
+  const [showDetailsCard, setShowDetailsCard] = useState(false);
+  const [selectedEndpointDetails, setSelectedEndpointDetails] = useState<any>(null);
   
+  // Refs for maintaining scroll position
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef(0);
+  
+  // Save scroll position before any state updates that might cause rerenders
+  const saveScrollPosition = () => {
+    if (scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+    }
+  };
+  
+  // Restore scroll position after component updates
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+    }
+  }, [activeEndpointTab, endpointMethodFilter]);
+
   // Group endpoints into tabs based on URL patterns
   const endpointGroups = useMemo(() => {
     // Start with the "all" group
@@ -54,16 +76,26 @@ export function EndpointSelectionStep() {
 
   // Filter endpoints based on active tab, filter text, and method filter
   const filteredEndpoints = useMemo(() => {
+    // Guard against empty endpoints
+    if (!endpoints || endpoints.length === 0) {
+      return [];
+    }
+
+    // Guard against endpointGroups not being initialized yet
+    if (!endpointGroups) {
+      return endpoints;
+    }
+    
     let filtered = endpoints;
     
     // Filter by tab group if not "all"
-    if (activeTab !== 'all') {
-      filtered = endpointGroups[activeTab] || [];
+    if (activeEndpointTab !== 'all') {
+      filtered = endpointGroups[activeEndpointTab] || [];
     }
     
-    // Filter by method if not "all"
-    if (filterByMethod !== 'all') {
-      filtered = filtered.filter(ep => ep.method === filterByMethod);
+    // Filter by method if not "all" - use context variable
+    if (endpointMethodFilter !== 'all') {
+      filtered = filtered.filter(ep => ep.method === endpointMethodFilter);
     }
     
     // Text filter on path or method
@@ -78,7 +110,7 @@ export function EndpointSelectionStep() {
     }
     
     return filtered;
-  }, [endpoints, endpointGroups, activeTab, filterByMethod, endpointFilter]);
+  }, [endpoints, endpointGroups, activeEndpointTab, endpointMethodFilter, endpointFilter]);
   
   const fetchEndpoints = async () => {
     if (!baseUrl) {
@@ -158,6 +190,19 @@ export function EndpointSelectionStep() {
     } else {
       setSelectedEndpoints([...selectedEndpoints, endpointKey]);
     }
+  };
+
+  // Handler for the details click
+  const handleDetailsClick = (e: React.MouseEvent, endpoint: any) => {
+    e.stopPropagation(); // Prevent triggering the row's onClick (which toggles selection)
+    setSelectedEndpointDetails(endpoint);
+    setShowDetailsCard(true);
+  };
+
+  // Function to close the details card
+  const closeDetailsCard = () => {
+    setShowDetailsCard(false);
+    setSelectedEndpointDetails(null);
   };
 
   return (
@@ -241,8 +286,8 @@ export function EndpointSelectionStep() {
                   </label>
                   <select
                     id="methodFilter"
-                    value={filterByMethod}
-                    onChange={(e) => setFilterByMethod(e.target.value)}
+                    value={endpointMethodFilter}
+                    onChange={(e) => setEndpointMethodFilter(e.target.value)}
                     className="flex-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 py-1.5 px-3"
                   >
                     {availableMethods.map(method => (
@@ -265,9 +310,9 @@ export function EndpointSelectionStep() {
               {availableTabs.map(tab => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => setActiveEndpointTab(tab)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${
-                    activeTab === tab
+                    activeEndpointTab === tab
                       ? 'bg-indigo-100 text-indigo-700'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                   }`}
@@ -289,7 +334,10 @@ export function EndpointSelectionStep() {
               <div className="w-24 text-xs font-medium text-gray-500">DETAILS</div>
             </div>
             
-            <div className="max-h-64 overflow-y-auto">
+            <div 
+              ref={scrollContainerRef}
+              className="max-h-64 overflow-y-auto"
+            >
               {filteredEndpoints.length === 0 ? (
                 <div className="px-4 py-3 text-sm text-gray-600">
                   No endpoints match your filter
@@ -302,7 +350,10 @@ export function EndpointSelectionStep() {
                   return (
                     <div 
                       key={index}
-                      onClick={() => handleToggleEndpoint(endpoint)}
+                      onClick={() => {
+                        saveScrollPosition();
+                        handleToggleEndpoint(endpoint);
+                      }}
                       className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
                         index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
                       }`}
@@ -333,8 +384,12 @@ export function EndpointSelectionStep() {
                       <div className="flex-1 text-sm text-gray-700">
                         {endpoint.path}
                       </div>
-                      <div className="w-24 text-xs text-gray-500 truncate">
-                        {endpoint.summary || endpoint.description || '-'}
+                      <div 
+                        className="w-24 text-xs text-gray-500 truncate flex items-center hover:text-blue-500 cursor-pointer"
+                        onClick={(e) => handleDetailsClick(e, endpoint)}
+                      >
+                        <span className="truncate">{endpoint.summary || endpoint.description || '-'}</span>
+                        <Info className="h-3.5 w-3.5 ml-1" />
                       </div>
                     </div>
                   );
@@ -366,6 +421,110 @@ export function EndpointSelectionStep() {
           <div className="flex flex-col items-center">
             <RefreshCw className="h-10 w-10 text-indigo-600 animate-spin" />
             <p className="mt-4 text-gray-600">Loading endpoints...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Details Card/Modal */}
+      {showDetailsCard && selectedEndpointDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={closeDetailsCard}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">
+                Endpoint Details
+              </h3>
+              <button onClick={closeDetailsCard} className="text-gray-400 hover:text-gray-500">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="px-6 py-4">
+              <div className="mb-4">
+                <span className={`inline-block text-sm font-medium px-2.5 py-1 rounded-full ${
+                  selectedEndpointDetails.method === 'GET' 
+                    ? 'bg-blue-100 text-blue-800' 
+                    : selectedEndpointDetails.method === 'POST'
+                    ? 'bg-green-100 text-green-800'
+                    : selectedEndpointDetails.method === 'PUT'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : selectedEndpointDetails.method === 'DELETE'
+                    ? 'bg-red-100 text-red-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {selectedEndpointDetails.method}
+                </span>
+                <span className="ml-2 text-gray-700 font-mono">{selectedEndpointDetails.path}</span>
+              </div>
+              
+              {selectedEndpointDetails.summary && (
+                <div className="mb-3">
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Summary</h4>
+                  <p className="text-sm text-gray-600">{selectedEndpointDetails.summary}</p>
+                </div>
+              )}
+              
+              {selectedEndpointDetails.description && (
+                <div className="mb-3">
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Description</h4>
+                  <p className="text-sm text-gray-600">{selectedEndpointDetails.description}</p>
+                </div>
+              )}
+              
+              {selectedEndpointDetails.parameters && selectedEndpointDetails.parameters.length > 0 && (
+                <div className="mb-3">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Parameters</h4>
+                  <div className="border border-gray-200 rounded-md overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 border-b border-gray-200 grid grid-cols-4">
+                      <div>Name</div>
+                      <div>Location</div>
+                      <div>Type</div>
+                      <div>Required</div>
+                    </div>
+                    <div className="divide-y divide-gray-200">
+                      {selectedEndpointDetails.parameters.map((param: any, index: number) => (
+                        <div key={index} className="px-4 py-2 text-xs grid grid-cols-4">
+                          <div className="font-medium text-gray-800">{param.name}</div>
+                          <div className="text-gray-600">{param.in}</div>
+                          <div className="text-gray-600">{param.schema?.type || '-'}</div>
+                          <div className="text-gray-600">{param.required ? 'Yes' : 'No'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {selectedEndpointDetails.responses && Object.keys(selectedEndpointDetails.responses).length > 0 && (
+                <div className="mb-3">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Responses</h4>
+                  <div className="border border-gray-200 rounded-md overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 border-b border-gray-200 grid grid-cols-2">
+                      <div>Status</div>
+                      <div>Description</div>
+                    </div>
+                    <div className="divide-y divide-gray-200">
+                      {Object.entries(selectedEndpointDetails.responses).map(([status, response]: [string, any]) => (
+                        <div key={status} className="px-4 py-2 text-xs grid grid-cols-2">
+                          <div className="font-medium text-gray-800">{status}</div>
+                          <div className="text-gray-600">{response.description || '-'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+              <button 
+                onClick={closeDetailsCard}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors text-sm font-medium"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

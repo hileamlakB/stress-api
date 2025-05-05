@@ -62,6 +62,10 @@ type WizardContextType = {
   setEndpoints: (endpoints: Array<any>) => void;
   selectedEndpoints: string[];
   setSelectedEndpoints: (endpoints: string[]) => void;
+  activeEndpointTab: string;
+  setActiveEndpointTab: (tab: string) => void;
+  endpointMethodFilter: string;
+  setEndpointMethodFilter: (filter: string) => void;
   
   // Test Configuration
   concurrentRequests: number;
@@ -114,6 +118,8 @@ export function WizardProvider({ children }: WizardProviderProps) {
   // Endpoints state
   const [endpoints, setEndpoints] = useState<Array<any>>([]);
   const [selectedEndpoints, setSelectedEndpoints] = useState<string[]>([]);
+  const [activeEndpointTab, setActiveEndpointTab] = useState<string>('all');
+  const [endpointMethodFilter, setEndpointMethodFilter] = useState<string>('all');
   
   // Test configuration state
   const [concurrentRequests, setConcurrentRequests] = useState(10);
@@ -171,6 +177,10 @@ export function WizardProvider({ children }: WizardProviderProps) {
     setEndpoints,
     selectedEndpoints,
     setSelectedEndpoints,
+    activeEndpointTab,
+    setActiveEndpointTab,
+    endpointMethodFilter,
+    setEndpointMethodFilter,
     concurrentRequests,
     setConcurrentRequests,
     distributionMode,

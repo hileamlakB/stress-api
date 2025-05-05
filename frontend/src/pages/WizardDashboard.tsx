@@ -161,10 +161,9 @@ export function WizardDashboard() {
     }
   };
 
-  const handleSessionSelect = (session: any) => {
+  const handleSessionSelect = async (session: any) => {
     setSelectedSessionId(session.id);
     console.log('Selected session:', session);
-    // Note: The context would handle loading the session configuration
   };
   
   const handleWelcomeCreateTestClick = () => {
@@ -471,8 +470,10 @@ export function WizardDashboard() {
             ) : (
               <div className="max-w-5xl mx-auto">
                 <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
-                  <StepWizard 
-                    steps={steps} 
+                  <WizardContent 
+                    steps={steps}
+                    selectedSessionId={selectedSessionId}
+                    sessions={sessions}
                     onComplete={handleWizardComplete}
                   />
                 </div>
@@ -490,5 +491,192 @@ export function WizardDashboard() {
         title="Create New Test"
       />
     </WizardProvider>
+  );
+}
+
+// New component that handles wizard context operations
+function WizardContent({ 
+  steps, 
+  selectedSessionId, 
+  sessions, 
+  onComplete 
+}: { 
+  steps: Step[]; 
+  selectedSessionId: string | undefined; 
+  sessions: Session[];
+  onComplete: () => void;
+}) {
+  const wizardContext = useWizard();
+  const [hasInitialized, setHasInitialized] = useState(false);
+  
+  // Effect to set the active test ID when a session is selected - only run once per session ID change
+  useEffect(() => {
+    if (!selectedSessionId) return;
+    
+    // Set the active test ID
+    wizardContext.setActiveTestId(selectedSessionId);
+    
+    // Find the session in the sessions list
+    const session = sessions.find(s => s.id === selectedSessionId);
+    if (session) {
+      loadSessionState(session);
+    } else {
+      resetWizardState();
+    }
+    
+    setHasInitialized(true);
+    
+    // Remove wizardContext from dependencies to avoid infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSessionId, sessions]);
+  
+  // Function to load session state from configuration without causing re-renders
+  const loadSessionState = (session: any) => {
+    console.log('Loading session state from:', session.id);
+    
+    // Check if the session has configuration with saved state
+    if (!session.configurations || session.configurations.length === 0) {
+      resetWizardState();
+      return;
+    }
+    
+    const config = session.configurations[0]; // Use the first configuration
+    if (!config) {
+      resetWizardState();
+      return;
+    }
+    
+    try {
+      // Prepare all state changes first, then apply them in batches
+      let baseUrl = '';
+      let concurrentRequests = 10;
+      let endpoints: any[] = [];
+      let selectedEndpointsList: string[] = [];
+      let distributionMode: any = 'sequential';
+      let strategyOptions = wizardContext.strategyOptions;
+      let authConfig = { method: 'none' as const };
+      let currentStep = 0;
+      let activeEndpointTab = 'all';
+      let endpointMethodFilter = 'all';
+      let showAdvancedOptions = false;
+      
+      // Process saved state if it exists
+      if (config.success_criteria) {
+        const savedState = config.success_criteria;
+        
+        // Extract and prepare values without setting state yet
+        if (savedState.target_url) baseUrl = savedState.target_url;
+        if (typeof savedState.concurrent_users === 'number') concurrentRequests = savedState.concurrent_users;
+        
+        // Prepare endpoints data
+        if (savedState.endpoints && Array.isArray(savedState.endpoints)) {
+          selectedEndpointsList = savedState.endpoints;
+          
+          if (wizardContext.endpoints.length === 0) {
+            endpoints = savedState.endpoints.map((endpoint: string) => {
+              const [method, path] = endpoint.split(' ');
+              return {
+                method,
+                path,
+                description: '',
+                summary: '',
+                parameters: [],
+                responses: {}
+              };
+            });
+          }
+        }
+        
+        // Prepare other settings
+        if (savedState.strategy) distributionMode = savedState.strategy;
+        if (savedState.strategy_options) strategyOptions = savedState.strategy_options;
+        
+        // Prepare auth config
+        if (savedState.auth && savedState.auth.method) {
+          // Create a new auth config with the right method first
+          const newAuthConfig = { method: savedState.auth.method };
+          
+          // Then merge with full config if available
+          if (savedState.auth.config) {
+            authConfig = {...newAuthConfig, ...savedState.auth.config};
+          } else {
+            authConfig = newAuthConfig;
+          }
+        }
+        
+        // Prepare UI state
+        if (savedState.ui_state) {
+          if (typeof savedState.ui_state.currentStep === 'number') currentStep = savedState.ui_state.currentStep;
+          if (savedState.ui_state.activeEndpointTab) activeEndpointTab = savedState.ui_state.activeEndpointTab;
+          if (savedState.ui_state.endpointMethodFilter) endpointMethodFilter = savedState.ui_state.endpointMethodFilter;
+          if (typeof savedState.ui_state.showAdvancedOptions === 'boolean') {
+            showAdvancedOptions = savedState.ui_state.showAdvancedOptions;
+          }
+        }
+      } else if (config.endpoint_url) {
+        // Simple legacy fallback if no full state is available
+        baseUrl = config.endpoint_url;
+        concurrentRequests = config.concurrent_users || 10;
+      }
+      
+      // Now apply all the state changes
+      wizardContext.setBaseUrl(baseUrl);
+      wizardContext.setConcurrentRequests(concurrentRequests);
+      
+      if (endpoints.length > 0) {
+        wizardContext.setEndpoints(endpoints);
+      }
+      
+      wizardContext.setSelectedEndpoints(selectedEndpointsList);
+      wizardContext.setDistributionMode(distributionMode);
+      wizardContext.setStrategyOptions(strategyOptions);
+      wizardContext.setAuthConfig(authConfig);
+      wizardContext.setActiveEndpointTab(activeEndpointTab);
+      wizardContext.setEndpointMethodFilter(endpointMethodFilter);
+      wizardContext.setShowAdvancedOptions(showAdvancedOptions);
+      
+      // Set current step last to prevent premature validation
+      setTimeout(() => {
+        wizardContext.setCurrentStep(currentStep);
+      }, 0);
+    } catch (error) {
+      console.error('Error restoring session state:', error);
+      resetWizardState();
+    }
+  };
+  
+  // Helper to reset wizard state to defaults without causing multiple re-renders
+  const resetWizardState = () => {
+    console.log('Resetting wizard state to defaults');
+    
+    // Apply defaults in a batch
+    wizardContext.setBaseUrl('');
+    wizardContext.setAuthConfig({ method: 'none' });
+    wizardContext.setEndpoints([]);
+    wizardContext.setSelectedEndpoints([]);
+    wizardContext.setConcurrentRequests(10);
+    wizardContext.setDistributionMode('sequential');
+    wizardContext.setActiveEndpointTab('all');
+    wizardContext.setEndpointMethodFilter('all');
+    wizardContext.setShowAdvancedOptions(false);
+    
+    // Set step last to prevent premature validation
+    setTimeout(() => {
+      wizardContext.setCurrentStep(0);
+    }, 0);
+  };
+  
+  // Don't render the wizard until we've initialized the state
+  if (selectedSessionId && !hasInitialized && sessions.length > 0) {
+    return <div className="flex justify-center items-center h-64">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+    </div>;
+  }
+  
+  return (
+    <StepWizard 
+      steps={steps}
+      onComplete={onComplete}
+    />
   );
 } 

@@ -43,7 +43,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       setPairs([{ key: '', value: '' }]);
       setRawJson('{}');
     }
-  }, []);
+  }, [value]);
 
   // Update the parent component when pairs change
   const updateParent = (newPairs: Array<{ key: string; value: string }>) => {
@@ -194,7 +194,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
                   type="text"
                   value={pair.key}
                   onChange={(e) => updatePair(index, 'key', e.target.value)}
-                  placeholder={Object.keys(placeholder)[0] || 'key'}
+                  placeholder={Object.keys(placeholder)[Math.min(index, Object.keys(placeholder).length - 1)] || 'key'}
                   className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 />
                 
@@ -203,7 +203,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
                   type="text"
                   value={pair.value}
                   onChange={(e) => updatePair(index, 'value', e.target.value)}
-                  placeholder={Object.values(placeholder)[0] || 'value'}
+                  placeholder={pair.key && placeholder[pair.key] ? placeholder[pair.key] : 'value'}
                   className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 />
                 

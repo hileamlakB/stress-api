@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Info, KeyRound, User, FileText, Cookie, X, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { Settings, Info, KeyRound, User, FileText, Cookie, X, ChevronDown, Plus, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import { AuthMethod, AuthConfig } from '../WizardContext';
@@ -114,6 +114,32 @@ export const validateAuthConfig = (config: AuthConfig, baseUrl: string): { valid
   return { valid: true };
 };
 
+// Function to fetch parameters for a login endpoint
+async function fetchLoginParameters(loginUrl: string, method: string): Promise<any> {
+  try {
+    const response = await fetch('/api/analyze-login-endpoint', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        login_url: loginUrl,
+        method: method
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to analyze login endpoint');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching login parameters:', error);
+    throw error;
+  }
+}
+
 export function ApiConfigStep() {
   const { 
     baseUrl, 
@@ -129,6 +155,11 @@ export function ApiConfigStep() {
   const [showAuthConfig, setShowAuthConfig] = useState(false);
   const [authError, setAuthError] = useState('');
   const [showAuthDropdown, setShowAuthDropdown] = useState(false);
+  
+  // State for parameter fetching
+  const [fetchingParameters, setFetchingParameters] = useState(false);
+  const [parameterFetchError, setParameterFetchError] = useState('');
+  const [lastFetchedUrl, setLastFetchedUrl] = useState('');
   
   // Log validation status on mount and when key values change
   useEffect(() => {
@@ -460,6 +491,69 @@ export function ApiConfigStep() {
     }
   };
   
+  // Function to handle parameter fetching
+  const handleFetchParameters = async () => {
+    const loginUrl = authConfig.sessionCookie?.loginUrl;
+    const method = authConfig.sessionCookie?.method || 'POST';
+    
+    if (!loginUrl) {
+      setParameterFetchError('Login URL is required');
+      return;
+    }
+    
+    setFetchingParameters(true);
+    setParameterFetchError('');
+    
+    try {
+      const result = await fetchLoginParameters(loginUrl, method);
+      setLastFetchedUrl(loginUrl);
+      
+      // Create a credentials object from the parameters
+      const credentials: Record<string, string> = {};
+      
+      // Add required parameters first
+      if (result.parameters.required && result.parameters.required.length > 0) {
+        result.parameters.required.forEach((param: any) => {
+          if (param.in !== 'header' && param.in !== 'path') {
+            // Use empty string instead of undefined/null for better UX
+            credentials[param.name] = param.example || '';
+          }
+        });
+      }
+      
+      // Add optional parameters
+      if (result.parameters.optional && result.parameters.optional.length > 0) {
+        result.parameters.optional.forEach((param: any) => {
+          if (param.in !== 'header' && param.in !== 'path') {
+            credentials[param.name] = param.example || '';
+          }
+        });
+      }
+      
+      // Force empty object if no parameters found to clear placeholders
+      if (Object.keys(credentials).length === 0) {
+        credentials['username'] = '';
+      }
+      
+      console.log("Setting credentials:", credentials);
+      
+      // Update the auth config with the new credentials
+      setAuthConfig({
+        ...authConfig,
+        sessionCookie: {
+          ...authConfig.sessionCookie!,
+          credentials: credentials
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error fetching parameters:', error);
+      setParameterFetchError(error instanceof Error ? error.message : 'Failed to fetch parameters');
+    } finally {
+      setFetchingParameters(false);
+    }
+  };
+  
   // Render authentication method specific fields
   const renderAuthFields = () => {
     switch (authConfig.method) {
@@ -717,16 +811,45 @@ export function ApiConfigStep() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Login Endpoint URL
               </label>
-              <input
-                type="text"
-                value={authConfig.sessionCookie?.loginUrl || ''}
-                onChange={(e) => handleSessionCookieChange('loginUrl', e.target.value)}
-                placeholder="https://api.example.com/login"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={authConfig.sessionCookie?.loginUrl || ''}
+                  onChange={(e) => handleSessionCookieChange('loginUrl', e.target.value)}
+                  placeholder="https://api.example.com/login"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <Button
+                  onClick={handleFetchParameters}
+                  disabled={fetchingParameters || !authConfig.sessionCookie?.loginUrl}
+                  className="whitespace-nowrap flex items-center"
+                >
+                  {fetchingParameters ? (
+                    <>
+                      <Loader2 className="animate-spin h-4 w-4 mr-1" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                      Fetch Parameters
+                    </>
+                  )}
+                </Button>
+              </div>
               <p className="mt-1 text-xs text-gray-500">
                 The full URL to the login endpoint
               </p>
+              {parameterFetchError && (
+                <p className="mt-1 text-xs text-red-500">
+                  {parameterFetchError}
+                </p>
+              )}
+              {lastFetchedUrl && (
+                <p className="mt-1 text-xs text-green-500">
+                  Parameters fetched successfully for: {lastFetchedUrl}
+                </p>
+              )}
             </div>
             
             <div>
@@ -771,11 +894,13 @@ export function ApiConfigStep() {
                 <JsonEditor
                   value={authConfig.sessionCookie?.credentials || {}}
                   onChange={(value) => handleSessionCookieChange('credentials', value)}
-                  placeholder={{ "phone_number": "+1234567890", "otp_code": "123456" }}
+                  placeholder={lastFetchedUrl ? {} : { "phone_number": "+1234567890", "otp_code": "123456" }}
                   error={authError}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Provide key-value pairs for login credentials
+                  {lastFetchedUrl 
+                    ? "Parameters detected from the login endpoint" 
+                    : "Provide key-value pairs for login credentials"}
                 </p>
               </div>
             ) : (

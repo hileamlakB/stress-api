@@ -470,6 +470,33 @@ export class ApiService {
       throw error;
     }
   }
+
+  /**
+   * Update the state of a test session
+   * @param sessionId The ID of the session to update
+   * @param configData The session configuration data
+   * @returns Updated session configuration
+   */
+  async updateSessionState(sessionId: string, configData: any) {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/configuration`, {
+        method: 'PUT',
+        headers: await this.getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify(configData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update session state');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating session state:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();

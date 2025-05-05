@@ -2,6 +2,7 @@ import React, { useState, ReactElement, useEffect } from 'react';
 import { Button } from '../Button';
 import { ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import { useWizard } from './WizardContext';
+import apiService from '../../services/ApiService';
 
 // Define a validation function type
 export type ValidationResult = { valid: boolean; message?: string } | boolean;
@@ -30,6 +31,7 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
   const [validationError, setValidationError] = useState<string | null>(null);
   const [validatedSteps, setValidatedSteps] = useState<Record<string, boolean>>({});
   const [isCurrentStepValid, setIsCurrentStepValid] = useState<boolean>(false);
+  const [savingSession, setSavingSession] = useState(false);
   
   // Get wizard context to access form data
   const wizardContext = useWizard();
@@ -138,12 +140,66 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
     return () => clearTimeout(timer);
   }, [currentStepIndex]);
   
-  const goToNextStep = () => {
+  // Save the current wizard state to the session
+  const saveWizardState = async () => {
+    // Check if we have a test ID to save to
+    if (!wizardContext.activeTestId) return;
+    
+    try {
+      setSavingSession(true);
+      
+      // Prepare the test configuration data
+      const testConfig = {
+        target_url: wizardContext.baseUrl,
+        concurrent_users: wizardContext.concurrentRequests,
+        endpoints: wizardContext.selectedEndpoints,
+        strategy: wizardContext.distributionMode,
+        strategy_options: wizardContext.strategyOptions,
+        // Add auth configuration
+        auth: {
+          method: wizardContext.authConfig.method,
+          config: wizardContext.authConfig
+        },
+        // Add additional state
+        ui_state: {
+          currentStep: currentStepIndex,
+          activeEndpointTab: wizardContext.activeEndpointTab,
+          endpointMethodFilter: wizardContext.endpointMethodFilter,
+          showAdvancedOptions: wizardContext.showAdvancedOptions
+        }
+      };
+      
+      // Create session configuration in the database
+      await apiService.updateSessionState(
+        wizardContext.activeTestId,
+        {
+          success_criteria: testConfig, // Store our state in success_criteria for now
+          endpoint_url: wizardContext.baseUrl,
+          http_method: "GET", // Default
+          concurrent_users: wizardContext.concurrentRequests,
+          ramp_up_time: 5, // Default
+          test_duration: 60, // Default
+          think_time: 1 // Default
+        }
+      );
+      
+      console.log("Wizard state saved to session");
+    } catch (error) {
+      console.error("Error saving wizard state:", error);
+    } finally {
+      setSavingSession(false);
+    }
+  };
+  
+  const goToNextStep = async () => {
     const isValid = validateCurrentStep();
     
     if (!isValid && !steps[currentStepIndex].optional) {
       return;
     }
+    
+    // Save the current state before moving to the next step
+    await saveWizardState();
     
     if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
@@ -153,19 +209,25 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
     }
   };
   
-  const goToPreviousStep = () => {
+  const goToPreviousStep = async () => {
+    // Save the current state before moving to the previous step
+    await saveWizardState();
+    
     if (currentStepIndex > 0) {
       setCurrentStepIndex(currentStepIndex - 1);
       setValidationError(null);
     }
   };
   
-  const goToStep = (index: number) => {
+  const goToStep = async (index: number) => {
     if (
       index >= 0 && 
       index < steps.length && 
       (index <= currentStepIndex || validatedSteps[steps[index-1]?.id])
     ) {
+      // Save current state before changing steps
+      await saveWizardState();
+      
       setCurrentStepIndex(index);
       setValidationError(null);
     }
@@ -261,23 +323,23 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
         <Button 
           variant="outline"
           onClick={goToPreviousStep}
-          disabled={isFirstStep}
+          disabled={isFirstStep || savingSession}
           className="flex items-center"
         >
           <ChevronLeft className="h-4 w-4 mr-1" />
-          Back
+          {savingSession ? 'Saving...' : 'Back'}
         </Button>
         
         {/* Next/Complete button with highlighted disabled state */}
         <Button 
           onClick={goToNextStep}
-          disabled={!isCurrentStepValid && !currentStep.optional}
+          disabled={(!isCurrentStepValid && !currentStep.optional) || savingSession}
           className={`flex items-center ${!isCurrentStepValid && !currentStep.optional 
             ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-300 hover:bg-gray-300 hover:text-gray-500 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-700' 
             : ''}`}
         >
-          {isLastStep ? 'Start Test' : 'Next'}
-          {!isLastStep && <ChevronRight className="h-4 w-4 ml-1" />}
+          {isLastStep ? 'Start Test' : (savingSession ? 'Saving...' : 'Next')}
+          {!isLastStep && !savingSession && <ChevronRight className="h-4 w-4 ml-1" />}
         </Button>
       </div>
     </div>

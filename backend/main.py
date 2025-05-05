@@ -192,6 +192,20 @@ class CreateDirectSessionRequest(BaseModel):
     description: Optional[str] = None
     recurrence: Optional[Dict[str, Any]] = None
 
+# Add this after the other session-related endpoints
+
+class UpdateSessionConfigRequest(BaseModel):
+    endpoint_url: str
+    http_method: str
+    concurrent_users: int
+    ramp_up_time: int
+    test_duration: int
+    think_time: int
+    request_headers: Optional[Dict[str, Any]] = None
+    request_body: Optional[Dict[str, Any]] = None
+    request_params: Optional[Dict[str, Any]] = None
+    success_criteria: Optional[Dict[str, Any]] = None
+
 app = FastAPI(
     title="FastAPI Stress Tester Backend",
     description="Backend service for the FastAPI Stress Testing tool",
@@ -1173,6 +1187,271 @@ async def create_direct_session_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating session: {str(e)}"
+        )
+
+# Endpoint to fetch parameters for a login endpoint
+@app.post("/api/analyze-login-endpoint")
+async def analyze_login_endpoint(request: dict):
+    """
+    Analyze a login endpoint to determine required and optional parameters.
+    
+    This endpoint attempts to examine a login API to determine what parameters
+    it expects for authentication. It uses different strategies:
+    1. Try to fetch OpenAPI docs if available
+    2. Perform a preflight OPTIONS request to detect parameters
+    3. Make a minimal request to analyze error responses for parameter hints
+    """
+    try:
+        login_url = request.get("login_url")
+        http_method = request.get("method", "POST")
+        
+        if not login_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Login URL is required"
+            )
+        
+        parameters = {
+            "required": [],
+            "optional": []
+        }
+        
+        # Try to get OpenAPI docs first - this is the most reliable method
+        try:
+            # Determine potential OpenAPI documentation URLs
+            api_base = "/".join(login_url.split("/")[:-1])  # Remove last part of URL
+            possible_docs_urls = [
+                f"{api_base}/openapi.json",
+                f"{api_base}/swagger/v1/swagger.json",
+                f"{api_base}/api-docs",
+                f"{api_base}/docs/openapi.json"
+            ]
+            
+            openapi_data = None
+            for doc_url in possible_docs_urls:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(doc_url, timeout=3.0)
+                        if response.status_code == 200:
+                            openapi_data = response.json()
+                            break
+                except Exception:
+                    continue
+            
+            if openapi_data:
+                # Extract login endpoint data from OpenAPI spec
+                login_path = "/" + login_url.split("/", 3)[-1] if login_url.startswith("http") else login_url
+                
+                # Look for the login path
+                for path, methods in openapi_data.get("paths", {}).items():
+                    # Check if this path matches or contains the login path (handles path params)
+                    if path == login_path or (
+                        path.replace("{", "").replace("}", "") == login_path.replace("{", "").replace("}", "")
+                    ):
+                        method_info = methods.get(http_method.lower())
+                        if method_info:
+                            # Extract parameters from request body
+                            if "requestBody" in method_info:
+                                schema = method_info["requestBody"].get("content", {}).get("application/json", {}).get("schema", {})
+                                if "properties" in schema:
+                                    for prop_name, prop_data in schema["properties"].items():
+                                        parameter = {
+                                            "name": prop_name,
+                                            "type": prop_data.get("type", "string"),
+                                            "description": prop_data.get("description", ""),
+                                            "example": prop_data.get("example", "")
+                                        }
+                                        if "required" in schema and prop_name in schema["required"]:
+                                            parameters["required"].append(parameter)
+                                        else:
+                                            parameters["optional"].append(parameter)
+                            
+                            # Extract URL parameters
+                            for param in method_info.get("parameters", []):
+                                parameter = {
+                                    "name": param.get("name", ""),
+                                    "type": param.get("schema", {}).get("type", "string"),
+                                    "description": param.get("description", ""),
+                                    "in": param.get("in", "query")
+                                }
+                                if param.get("required", False):
+                                    parameters["required"].append(parameter)
+                                else:
+                                    parameters["optional"].append(parameter)
+        except Exception as e:
+            logger.warning(f"Error extracting OpenAPI information: {str(e)}")
+        
+        # If no parameters found via OpenAPI, try OPTIONS request
+        if not parameters["required"] and not parameters["optional"]:
+            try:
+                async with httpx.AsyncClient() as client:
+                    # Send OPTIONS request to get metadata
+                    options_response = await client.options(
+                        login_url,
+                        timeout=3.0,
+                        headers={"Accept": "application/json"}
+                    )
+                    
+                    # Check for CORS headers that might indicate accepted fields
+                    if "Access-Control-Allow-Headers" in options_response.headers:
+                        allowed_headers = options_response.headers["Access-Control-Allow-Headers"].split(",")
+                        for header in allowed_headers:
+                            header = header.strip().lower()
+                            if header not in ["content-type", "authorization", "accept"]:
+                                parameters["optional"].append({
+                                    "name": header,
+                                    "type": "string",
+                                    "description": "Header parameter",
+                                    "in": "header"
+                                })
+            except Exception as e:
+                logger.warning(f"Error performing OPTIONS request: {str(e)}")
+        
+        # Make a minimal request to analyze error responses for parameter hints
+        if not parameters["required"] and not parameters["optional"]:
+            try:
+                async with httpx.AsyncClient() as client:
+                    # Make request with empty body to see error response
+                    response = await client.request(
+                        http_method, 
+                        login_url,
+                        json={},
+                        timeout=3.0,
+                        headers={"Accept": "application/json"}
+                    )
+                    
+                    # Check error response for field validation errors
+                    if response.status_code in [400, 422] and response.headers.get("content-type", "").startswith("application/json"):
+                        error_data = response.json()
+                        
+                        # FastAPI validation error format
+                        if "detail" in error_data and isinstance(error_data["detail"], list):
+                            for error in error_data["detail"]:
+                                if "loc" in error and len(error["loc"]) > 0:
+                                    field_name = error["loc"][-1]
+                                    parameters["required"].append({
+                                        "name": field_name,
+                                        "type": "string",
+                                        "description": error.get("msg", "Required field")
+                                    })
+                        
+                        # Other common validation error formats
+                        for key in ["errors", "validation_errors", "fields"]:
+                            if key in error_data and isinstance(error_data[key], dict):
+                                for field_name, error_msg in error_data[key].items():
+                                    parameters["required"].append({
+                                        "name": field_name,
+                                        "type": "string",
+                                        "description": error_msg if isinstance(error_msg, str) else "Required field"
+                                    })
+            except Exception as e:
+                logger.warning(f"Error analyzing login endpoint error response: {str(e)}")
+        
+        # If we still couldn't determine fields, add common auth fields as suggestions
+        if not parameters["required"] and not parameters["optional"]:
+            common_auth_fields = [
+                {"name": "username", "type": "string", "description": "Username or email"},
+                {"name": "password", "type": "string", "description": "User password"},
+                {"name": "email", "type": "string", "description": "Email address"},
+                {"name": "token", "type": "string", "description": "Authentication token"},
+                {"name": "code", "type": "string", "description": "Verification code"},
+                {"name": "client_id", "type": "string", "description": "OAuth client ID"},
+                {"name": "client_secret", "type": "string", "description": "OAuth client secret"}
+            ]
+            parameters["optional"] = common_auth_fields
+        
+        return {
+            "login_url": login_url,
+            "method": http_method,
+            "parameters": parameters,
+            "detection_method": "openapi" if openapi_data else "options_request" if "optional" in parameters else "error_analysis" if "required" in parameters else "suggested"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing login endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing login endpoint: {str(e)}"
+        )
+
+# Add this after the other session-related endpoints
+@app.put("/api/sessions/{session_id}/configuration", response_model=SessionConfigModel)
+async def update_session_configuration(
+    session_id: str,
+    request: UpdateSessionConfigRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Update or create a configuration for a session to store wizard state"""
+    try:
+        # Verify the session exists
+        session = get_session(db, uuid.UUID(session_id))
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session with ID {session_id} not found"
+            )
+        
+        # Get existing configuration or create a new one
+        configs = get_session_configs(db, session.id)
+        
+        if configs and len(configs) > 0:
+            # Update the first configuration
+            config = update_session_config(
+                db,
+                configs[0].id,
+                endpoint_url=request.endpoint_url,
+                http_method=request.http_method,
+                concurrent_users=request.concurrent_users,
+                ramp_up_time=request.ramp_up_time,
+                test_duration=request.test_duration,
+                think_time=request.think_time,
+                request_headers=request.request_headers,
+                request_body=request.request_body,
+                request_params=request.request_params,
+                success_criteria=request.success_criteria
+            )
+        else:
+            # Create a new configuration
+            config = create_session_config(
+                db,
+                session.id,
+                endpoint_url=request.endpoint_url,
+                http_method=request.http_method,
+                concurrent_users=request.concurrent_users,
+                ramp_up_time=request.ramp_up_time,
+                test_duration=request.test_duration,
+                think_time=request.think_time,
+                request_headers=request.request_headers,
+                request_body=request.request_body,
+                request_params=request.request_params,
+                success_criteria=request.success_criteria
+            )
+        
+        # Return the updated or created config
+        return SessionConfigModel(
+            id=str(config.id),
+            session_id=str(config.session_id),
+            endpoint_url=config.endpoint_url,
+            http_method=config.http_method,
+            request_headers=config.request_headers,
+            request_body=config.request_body,
+            request_params=config.request_params,
+            concurrent_users=config.concurrent_users,
+            ramp_up_time=config.ramp_up_time,
+            test_duration=config.test_duration,
+            think_time=config.think_time,
+            success_criteria=config.success_criteria
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating session configuration: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating session configuration: {str(e)}"
         )
 
 if __name__ == "__main__":
