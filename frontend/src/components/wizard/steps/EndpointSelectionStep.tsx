@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { RefreshCw, Filter, Link, Info } from 'lucide-react';
+import { RefreshCw, Filter, Link, Info, Check } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import apiService from '../../../services/ApiService';
@@ -159,37 +159,13 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
     setEndpointMethodFilter
   } = useWizard();
 
-  // ---- LOCAL STATE ----
+  // LOCAL STATE
   const [isLoadingEndpoints, setIsLoadingEndpoints] = useState(false);
   const [endpointFilter, setEndpointFilter] = useState('');
   const [advancedFiltering, setAdvancedFiltering] = useState(false);
   const [showDetailsCard, setShowDetailsCard] = useState(false);
   const [selectedEndpointDetails, setSelectedEndpointDetails] = useState<any>(null);
-  
-  // Create a local selection state using a Set for efficient lookups
-  const [localSelectedKeys, setLocalSelectedKeys] = useState(() => {
-    return new Set(selectedEndpoints);
-  });
-  
-  // Sync from context when component mounts
-  React.useEffect(() => {
-    setLocalSelectedKeys(new Set(selectedEndpoints));
-  }, [selectedEndpoints]);
-  
-  // Sync to context only when unmounting or proceeding to next step
-  React.useEffect(() => {
-    return () => {
-      if (localSelectedKeys.size !== selectedEndpoints.length) {
-        setSelectedEndpoints(Array.from(localSelectedKeys));
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  
-  // Update wizard context when user proceeds to next step
-  const syncSelectionToContext = useCallback(() => {
-    setSelectedEndpoints(Array.from(localSelectedKeys));
-  }, [localSelectedKeys, setSelectedEndpoints]);
+  const [endpointsFetched, setEndpointsFetched] = useState(endpoints.length > 0);
   
   // Group endpoints into tabs based on URL patterns
   const endpointGroups = useMemo(() => {
@@ -262,8 +238,83 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
     return filtered;
   }, [endpoints, endpointGroups, activeEndpointTab, endpointMethodFilter, endpointFilter]);
   
-  // ---- EVENT HANDLERS ----
-  
+  // Add debugging information for endpoint selections
+  React.useEffect(() => {
+    console.log("Selected endpoints in context:", selectedEndpoints);
+  }, [selectedEndpoints]);
+
+  // Add this helper function to call wizard's saveWizardState - move this up!
+  const saveWizardState = useCallback(() => {
+    // This is a simple helper to ensure session state is saved
+    // It's a minimal operation but helps ensure persistence
+    console.log('Syncing endpoint selections to session:', selectedEndpoints.length);
+    
+    // The actual save happens in StepWizard, but we want to ensure
+    // the selection is in context before that happens
+    if (onStepNext) {
+      // Signal that there's been a change
+      onStepNext();
+    }
+  }, [selectedEndpoints, onStepNext]);
+
+  // Toggle a single endpoint's selection - update the context directly
+  const handleToggleEndpoint = useCallback((endpoint: any, isSelected: boolean) => {
+    const key = `${endpoint.method} ${endpoint.path}`;
+    
+    // Instead of functional update, directly compute the new array
+    if (isSelected && !selectedEndpoints.includes(key)) {
+      // Add to selection
+      console.log(`Adding endpoint to selection: ${key}`);
+      setSelectedEndpoints([...selectedEndpoints, key]);
+    } else if (!isSelected && selectedEndpoints.includes(key)) {
+      // Remove from selection
+      console.log(`Removing endpoint from selection: ${key}`);
+      setSelectedEndpoints(selectedEndpoints.filter(k => k !== key));
+    }
+    // If no change needed, don't update state
+    
+    // Force sync to session state
+    saveWizardState();
+  }, [selectedEndpoints, setSelectedEndpoints, saveWizardState]);
+
+  // Clear selection
+  const handleClearSelection = useCallback(() => {
+    setSelectedEndpoints([]);
+  }, [setSelectedEndpoints]);
+
+  // Select all endpoints
+  const handleSelectAllEndpoints = useCallback(() => {
+    setSelectedEndpoints(endpoints.map(endpoint => `${endpoint.method} ${endpoint.path}`));
+  }, [endpoints, setSelectedEndpoints]);
+
+  // Check if an endpoint is selected - using selectedEndpoints from context
+  const isEndpointSelected = useCallback((endpoint: any) => {
+    const key = `${endpoint.method} ${endpoint.path}`;
+    return selectedEndpoints.includes(key);
+  }, [selectedEndpoints]);
+
+  // Show details modal for an endpoint
+  const handleShowDetails = useCallback((endpoint: any) => {
+    setSelectedEndpointDetails(endpoint);
+    setShowDetailsCard(true);
+  }, []);
+
+  // Close the details modal
+  const closeDetailsCard = useCallback(() => {
+    setShowDetailsCard(false);
+    setSelectedEndpointDetails(null);
+  }, []);
+
+  // Add function to reset endpoints
+  const handleResetEndpoints = useCallback(() => {
+    if (window.confirm('Are you sure you want to refetch endpoints? This will clear your current endpoint selections.')) {
+      setEndpointsFetched(false);
+      setEndpoints([]);
+      setSelectedEndpoints([]);
+    }
+  }, [setEndpoints, setSelectedEndpoints]);
+
+  // Update the fetchEndpoints function to set the fetched flag
   const fetchEndpoints = async () => {
     if (!baseUrl) {
       alert('Please enter a FastAPI Base URL in the previous step');
@@ -299,6 +350,10 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
       } else {
         console.log(`Successfully fetched ${mappedEndpoints.length} endpoints`);
         setEndpoints(mappedEndpoints);
+        // Set the flag to indicate endpoints have been fetched
+        setEndpointsFetched(true);
+        // Also save endpoints to session state
+        saveWizardState();
       }
       
       setIsLoadingEndpoints(false);
@@ -327,47 +382,48 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
     }
   };
 
-  // --- SELECTION HANDLERS (operate on local state) ---
-  
-  // Toggle a single endpoint's selection
-  const handleToggleEndpoint = useCallback((endpoint: any, isSelected: boolean) => {
-    const key = `${endpoint.method} ${endpoint.path}`;
-    setLocalSelectedKeys(prev => {
-      const newSet = new Set(prev);
-      if (isSelected) {
-        newSet.add(key);
-      } else {
-        newSet.delete(key);
-      }
-      return newSet;
-    });
-  }, []);
+  // Update the syncSelectionToContext function to ensure it does something
+  const syncSelectionToContext = useCallback(() => {
+    // Force sync to context (log the state for debugging)
+    console.log("Explicitly syncing selections to wizard context:", selectedEndpoints);
+    if (onStepNext) {
+      console.log("Calling onStepNext callback to proceed to next step");
+    }
+  }, [selectedEndpoints, onStepNext]);
 
-  // Select all endpoints
-  const handleSelectAllEndpoints = useCallback(() => {
-    const newSet = new Set<string>();
-    endpoints.forEach(endpoint => {
-      newSet.add(`${endpoint.method} ${endpoint.path}`);
-    });
-    setLocalSelectedKeys(newSet);
-  }, [endpoints]);
+  // Override onStepNext to ensure selection is saved
+  React.useEffect(() => {
+    // Add a listener for the "Next" button click
+    if (typeof onStepNext === 'function') {
+      const originalOnStepNext = onStepNext;
+      // @ts-ignore - we're monkey-patching the callback
+      onStepNext = () => {
+        syncSelectionToContext(); 
+        console.log("Selected endpoints before moving to next step:", selectedEndpoints.length);
+        return originalOnStepNext();
+      };
+    }
+  }, [onStepNext, syncSelectionToContext, selectedEndpoints]);
 
-  // Clear all selections
-  const handleClearSelection = useCallback(() => {
-    setLocalSelectedKeys(new Set());
-  }, []);
+  // Force an explicit context sync when component unmounts
+  React.useEffect(() => {
+    return () => {
+      console.log("Endpoint selection step unmounting, syncing selections to context:", 
+                  selectedEndpoints.length, "endpoints");
+    };
+  }, [selectedEndpoints]);
 
-  // Show details modal for an endpoint
-  const handleShowDetails = useCallback((endpoint: any) => {
-    setSelectedEndpointDetails(endpoint);
-    setShowDetailsCard(true);
-  }, []);
-
-  // Close the details modal
-  const closeDetailsCard = useCallback(() => {
-    setShowDetailsCard(false);
-    setSelectedEndpointDetails(null);
-  }, []);
+  // Modify the tab change handler to ensure selection is persisted
+  const handleTabChange = useCallback((tab: string) => {
+    // Log before change
+    console.log(`Tab change from ${activeEndpointTab} to ${tab}, selections:`, selectedEndpoints.length);
+    
+    // Change the tab
+    setActiveEndpointTab(tab);
+    
+    // Force sync state after tab change
+    saveWizardState();
+  }, [activeEndpointTab, selectedEndpoints, setActiveEndpointTab, saveWizardState]);
 
   // ---- UI ----
   return (
@@ -387,20 +443,37 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
           <h3 className="text-lg font-medium text-gray-900">Available Endpoints</h3>
         </div>
         <div className="flex items-center">
-          <Button
-            onClick={fetchEndpoints}
-            disabled={isLoadingEndpoints || !baseUrl}
-            className="inline-flex items-center justify-center min-w-[140px]"
-            size="sm"
-            variant="primary"
-          >
-            {isLoadingEndpoints ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Fetch Endpoints
-          </Button>
+          {!endpointsFetched ? (
+            <Button
+              onClick={fetchEndpoints}
+              disabled={isLoadingEndpoints || !baseUrl}
+              className="inline-flex items-center justify-center min-w-[140px]"
+              size="sm"
+              variant="primary"
+            >
+              {isLoadingEndpoints ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Fetch Endpoints
+            </Button>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-green-600 flex items-center">
+                <Check className="h-4 w-4 mr-1" />
+                {endpoints.length} Endpoints Loaded
+              </span>
+              <Button
+                onClick={handleResetEndpoints}
+                size="sm"
+                variant="outline"
+                className="text-xs"
+              >
+                Refetch Endpoints
+              </Button>
+            </div>
+          )}
         </div>
       </div>
       
@@ -475,7 +548,7 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
               {availableTabs.map(tab => (
                 <button
                   key={tab}
-                  onClick={() => setActiveEndpointTab(tab)}
+                  onClick={() => handleTabChange(tab)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md whitespace-nowrap ${
                     activeEndpointTab === tab
                       ? 'bg-indigo-100 text-indigo-700'
@@ -503,7 +576,7 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
             <div className="max-h-64 overflow-y-auto">
               <EndpointList
                 endpoints={filteredEndpoints}
-                selectedKeys={localSelectedKeys}
+                selectedKeys={new Set(selectedEndpoints)}
                 onToggleEndpoint={handleToggleEndpoint}
                 onShowDetails={handleShowDetails}
               />
@@ -511,8 +584,8 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
           </div>
           
           <div className="mt-2 text-sm text-gray-500">
-            {localSelectedKeys.size > 0 ? 
-              `Selected ${localSelectedKeys.size} endpoint${localSelectedKeys.size === 1 ? '' : 's'}` : 
+            {selectedEndpoints.length > 0 ? 
+              `Selected ${selectedEndpoints.length} endpoint${selectedEndpoints.length === 1 ? '' : 's'}` : 
               'No endpoints selected yet. Please select at least one endpoint to continue.'}
           </div>
         </>

@@ -61,15 +61,15 @@ export function TestConfigStep() {
       <div>
         <div className="flex justify-between items-center mb-2">
           <label htmlFor="concurrentRequests" className="block text-sm font-medium text-gray-700">
-            Maximum Concurrent Requests
+            Maximum Concurrent Requests (4 - 1000)
           </label>
           <span className="text-sm text-gray-500">{concurrentRequests}</span>
         </div>
         <input
           id="concurrentRequests"
           type="range"
-          min="1"
-          max="50"
+          min="4"
+          max="1000"
           value={concurrentRequests}
           onChange={(e) => setConcurrentRequests(parseInt(e.target.value))}
           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"

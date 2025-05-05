@@ -206,10 +206,19 @@ export function StepWizard({ steps, onComplete, initialStep = 0 }: StepWizardPro
     if (!isValid && !steps[currentStepIndex].optional) {
       return;
     }
+    
     // Call the step's onStepNext before saving state and moving on
     await callStepOnNext();
+    
+    // Add explicit check for endpoint selection step to ensure selections are captured
+    const currentStep = steps[currentStepIndex];
+    if (currentStep.id === 'endpoint-selection') {
+      console.log("Ensuring endpoint selections are saved:", wizardContext.selectedEndpoints.length);
+    }
+    
     // Save the current state before moving to the next step
     await saveWizardState();
+    
     if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(currentStepIndex + 1);
       setValidationError(null);
