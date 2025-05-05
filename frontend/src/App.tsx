@@ -1,4 +1,4 @@
-import React from 'react';
+// React import removed as it's not needed with modern JSX transform
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LandingPage } from './pages/LandingPage';
@@ -10,6 +10,11 @@ import { WizardDashboard } from './pages/WizardDashboard';
 import { EndpointDataWrapper } from './components/EndpointDataWrapper';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthCallback } from './pages/AuthCallback';
+import { DocumentationPage } from './pages/DocumentationPage';
+import { AboutPage } from './pages/AboutPage';
+import { PrivacyPage } from './pages/PrivacyPage';
+import { TermsPage } from './pages/TermsPage';
+import { CookiesPage } from './pages/CookiesPage';
 
 const queryClient = new QueryClient();
 
@@ -25,6 +30,11 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/dashboard" element={<Navigate to="/wizard" replace />} />
+          <Route path="/docs" element={<DocumentationPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/cookies" element={<CookiesPage />} />
           <Route 
             path="/wizard" 
             element={
