@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { RefreshCw, Filter, Link, Info, Check } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
@@ -165,7 +165,9 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
   const [advancedFiltering, setAdvancedFiltering] = useState(false);
   const [showDetailsCard, setShowDetailsCard] = useState(false);
   const [selectedEndpointDetails, setSelectedEndpointDetails] = useState<any>(null);
-  const [endpointsFetched, setEndpointsFetched] = useState(endpoints.length > 0);
+  
+  // Get fetched state from endpoints existence instead of local state
+  const endpointsFetched = endpoints && endpoints.length > 0;
   
   // Group endpoints into tabs based on URL patterns
   const endpointGroups = useMemo(() => {
@@ -308,13 +310,14 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
   // Add function to reset endpoints
   const handleResetEndpoints = useCallback(() => {
     if (window.confirm('Are you sure you want to refetch endpoints? This will clear your current endpoint selections.')) {
-      setEndpointsFetched(false);
       setEndpoints([]);
       setSelectedEndpoints([]);
+      // Force a save to persist the emptied state
+      saveWizardState();
     }
-  }, [setEndpoints, setSelectedEndpoints]);
+  }, [setEndpoints, setSelectedEndpoints, saveWizardState]);
 
-  // Update the fetchEndpoints function to set the fetched flag
+  // Update the fetchEndpoints function to properly manage endpoint data
   const fetchEndpoints = async () => {
     if (!baseUrl) {
       alert('Please enter a FastAPI Base URL in the previous step');
@@ -350,9 +353,8 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
       } else {
         console.log(`Successfully fetched ${mappedEndpoints.length} endpoints`);
         setEndpoints(mappedEndpoints);
-        // Set the flag to indicate endpoints have been fetched
-        setEndpointsFetched(true);
-        // Also save endpoints to session state
+        
+        // Also save endpoints to session state to ensure persistence
         saveWizardState();
       }
       
@@ -361,7 +363,7 @@ export function EndpointSelectionStep({ onStepNext }: { onStepNext?: () => void 
       console.error('Error fetching endpoints:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       
-      // Provide user-friendly error message
+      // Provide user-friendly error message based on the error type
       let userMessage = 'Failed to fetch endpoints: ' + errorMessage;
       
       // Create more specific error messages for common issues

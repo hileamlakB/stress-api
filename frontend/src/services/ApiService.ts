@@ -497,6 +497,52 @@ export class ApiService {
       throw error;
     }
   }
+
+  /**
+   * Get progress updates for a running stress test
+   * @param testId The ID of the test to check
+   * @returns Progress information including session acquisition status
+   */
+  async getTestProgress(testId: string) {
+    try {
+      const response = await fetch(`/api/stress-test/${testId}/progress`, {
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to get test progress');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting test progress:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get detailed session acquisition status for a test
+   * @param testId The ID of the test to check
+   * @returns Session acquisition information
+   */
+  async getSessionStatus(testId: string) {
+    try {
+      const response = await fetch(`/api/stress-test/${testId}/session-status`, {
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to get session acquisition status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting session status:', error);
+      throw error;
+    }
+  }
 }
 
 export default ApiService.getInstance();

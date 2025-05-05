@@ -50,9 +50,11 @@ from api_models import (
     TestScenario,
     EndpointTestDataRequest,
     EndpointTestDataResponse,
-    TestResultModel,  # New import
-    TestResultsFilterRequest,  # New import
-    TestResultsResponse  # New import
+    TestResultModel,
+    TestResultsFilterRequest,
+    TestResultsResponse,
+    SessionStatusResponse,
+    SessionInfo
 )
 from metrics_generator import metrics_manager
 from backend.database.database import get_db
@@ -63,18 +65,18 @@ from backend.database.crud import (
     create_session, 
     create_session_config, 
     get_session,
-    create_test_result,  # New import
-    get_test_result,  # New import
-    get_test_result_by_test_id,  # New import
-    get_config_test_results,  # New import
-    get_session_test_results,  # New import
-    get_user_test_results,  # New import
-    get_filtered_user_test_results,  # New import
-    get_filtered_user_test_results_count,  # New import
-    update_test_result,  # New import
-    update_session,  # New import
-    delete_session,  # New import
-    create_user  # Import for user creation
+    create_test_result,
+    get_test_result,
+    get_test_result_by_test_id,
+    get_config_test_results,
+    get_session_test_results,
+    get_user_test_results,
+    get_filtered_user_test_results,
+    get_filtered_user_test_results_count,
+    update_test_result,
+    update_session,
+    delete_session,
+    create_user
 )
 from sqlalchemy.orm import Session
 
@@ -666,7 +668,7 @@ async def stop_test(test_id: str, db: Session = Depends(get_db), _: None = Depen
         )
 
 # Endpoint to start an advanced stress test with multiple strategies
-@app.post("/api/stress-test/start", response_model=TestStartResponse)
+@app.post("/api/advanced-test", response_model=TestStartResponse)
 async def start_advanced_test(config: StressTestConfig, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
         test_id = str(uuid.uuid4())
@@ -696,7 +698,51 @@ async def start_advanced_test(config: StressTestConfig, db: Session = Depends(ge
             except (ValueError, Exception) as e:
                 logger.warning(f"Could not store test configuration: {str(e)}")
         
-        # Start the test based on the strategy
+        # TRIGGER SESSION ACQUISITION FOR AUTHENTICATION
+        # If the test uses session authentication, attempt to acquire sessions first
+        if hasattr(config, 'authentication') and config.authentication:
+            auth_config = config.authentication
+            
+            # For session cookie authentication
+            if auth_config.get('type') == 'session':
+                login_endpoint = auth_config.get('login_endpoint')
+                login_method = auth_config.get('login_method', 'POST')
+                
+                # For multiple accounts
+                if auth_config.get('multiple_accounts', False):
+                    accounts = auth_config.get('accounts', [])
+                    
+                    # Start session acquisition for each account
+                    for account in accounts:
+                        # Identify the account by a key in the credentials
+                        account_id = None
+                        for key in ['username', 'email', 'user']:
+                            if key in account:
+                                account_id = account[key]
+                                break
+                        
+                        # Launch session acquisition (don't await, handle asynchronously)
+                        asyncio.create_task(stress_tester.acquire_session(
+                            test_id=test_id,
+                            login_url=login_endpoint,
+                            login_method=login_method,
+                            credentials=account,
+                            account_id=account_id
+                        ))
+                
+                # For single account
+                elif auth_config.get('login_payload'):
+                    credentials = auth_config.get('login_payload')
+                    
+                    # Launch session acquisition (don't await, handle asynchronously)
+                    asyncio.create_task(stress_tester.acquire_session(
+                        test_id=test_id,
+                        login_url=login_endpoint,
+                        login_method=login_method,
+                        credentials=credentials
+                    ))
+        
+        # Start the actual stress test based on the distribution strategy
         if config.strategy == DistributionStrategy.SEQUENTIAL:
             await stress_tester.start_sequential_test(
                 test_id=test_id,
@@ -1452,6 +1498,152 @@ async def update_session_configuration(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating session configuration: {str(e)}"
+        )
+
+# Endpoint to get session acquisition status for a test
+@app.get("/api/stress-test/{test_id}/session-status", response_model=SessionStatusResponse)
+async def get_session_status(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
+    try:
+        if test_id not in test_progress:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test with ID {test_id} not found"
+            )
+        
+        # Get the test progress data and config
+        progress_data = test_progress.get(test_id, {})
+        config = progress_data.get("config", {})
+        
+        # Get session acquisition status from the stress tester
+        session_data = stress_tester.get_session_status(test_id)
+        
+        # Create the response object
+        session_status = {
+            "test_id": test_id,
+            "status": progress_data.get("status", TestStatus.PENDING),
+            "acquired_sessions": []
+        }
+        
+        # If the stress tester has session data, use it
+        if session_data and session_data.get("acquired_sessions"):
+            session_status["acquired_sessions"] = session_data.get("acquired_sessions")
+        
+        # If authentication is configured, add auth type info
+        if hasattr(config, "authentication") and config.authentication:
+            auth_config = config.authentication
+            
+            # Add session info based on authentication type
+            if auth_config.get("type") == "session":
+                session_status["auth_type"] = "session"
+                session_status["login_endpoint"] = auth_config.get("login_endpoint")
+                
+                # If we don't have data from the stress tester yet
+                if not session_status["acquired_sessions"]:
+                    # For multiple accounts, show status of each
+                    if auth_config.get("multiple_accounts", False):
+                        accounts = auth_config.get("accounts", [])
+                        for i, account in enumerate(accounts):
+                            # Get masked username for display (first 2 chars + ****)
+                            username_key = next((k for k in account.keys() if k.lower() in ["username", "email", "user"]), None)
+                            username = account.get(username_key, f"Account {i+1}") if username_key else f"Account {i+1}"
+                            masked_username = username[:2] + "****" if len(username) > 2 else username
+                            
+                            # Add placeholder session status
+                            session_status["acquired_sessions"].append({
+                                "account": masked_username,
+                                "status": "pending",
+                                "acquired_at": None,
+                                "session_id": None,
+                                "error": None
+                            })
+                    else:
+                        # Single account status
+                        session_status["acquired_sessions"].append({
+                            "account": "Primary Account",
+                            "status": "pending",
+                            "acquired_at": None,
+                            "session_id": None,
+                            "error": None
+                        })
+            
+            # For token authentication
+            elif auth_config.get("type") == "token":
+                session_status["auth_type"] = "token"
+                
+                # If we don't have data from the stress tester yet
+                if not session_status["acquired_sessions"]:
+                    # For multiple tokens
+                    if auth_config.get("multiple_tokens", False):
+                        tokens = auth_config.get("tokens", [])
+                        for i, _ in enumerate(tokens):
+                            # Add placeholder token status
+                            session_status["acquired_sessions"].append({
+                                "token_id": f"Token {i+1}",
+                                "status": "pending",
+                                "error": None
+                            })
+                    else:
+                        # Single token status
+                        session_status["acquired_sessions"].append({
+                            "token_id": "Primary Token",
+                            "status": "pending",
+                            "error": None
+                        })
+            
+            # For basic auth
+            elif auth_config.get("type") == "basic":
+                session_status["auth_type"] = "basic"
+                
+                # If we don't have data from the stress tester yet
+                if not session_status["acquired_sessions"]:
+                    # For multiple accounts
+                    if auth_config.get("multiple_accounts", False):
+                        accounts = auth_config.get("accounts", [])
+                        for i, account in enumerate(accounts):
+                            username = account.get("username", f"User {i+1}")
+                            masked_username = username[:2] + "****" if len(username) > 2 else username
+                            
+                            # Add placeholder basic auth status
+                            session_status["acquired_sessions"].append({
+                                "username": masked_username,
+                                "status": "pending",
+                                "error": None
+                            })
+                    else:
+                        # Single account status
+                        session_status["acquired_sessions"].append({
+                            "username": "Primary User",
+                            "status": "pending",
+                            "error": None
+                        })
+        
+        return SessionStatusResponse(**session_status)
+        
+    except Exception as e:
+        logger.error(f"Error getting session status: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting session status: {str(e)}"
+        )
+
+# Endpoint to get progress information for an advanced test
+@app.get("/api/stress-test/{test_id}/progress", response_model=StressTestProgressResponse)
+async def get_advanced_test_progress(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
+    try:
+        progress = stress_tester.get_test_progress(test_id)
+        
+        return StressTestProgressResponse(
+            test_id=progress["test_id"],
+            status=progress["status"],
+            elapsed_time=progress["elapsed_time"],
+            completed_requests=progress["completed_requests"],
+            results_available=progress["results_available"]
+        )
+    except Exception as e:
+        logger.error(f"Error getting test progress: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting test progress: {str(e)}"
         )
 
 if __name__ == "__main__":

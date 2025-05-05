@@ -2,9 +2,13 @@ import asyncio
 import httpx
 import time
 import random
-from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
+import string
 import logging
+import json
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple, Set
+import concurrent.futures
+from collections import defaultdict
 from api_models import DistributionStrategy, EndpointResult
 
 logging.basicConfig(level=logging.INFO)
@@ -18,6 +22,10 @@ class StressTester:
         self.test_start_times = {}
         self.test_end_times = {}
         self.completed_requests = {}
+        
+        # New state for tracking session acquisition
+        self.session_status = {}
+        self.acquired_sessions = {}
         
         # Import RequestDataGenerator here to avoid circular imports
         from data_generator import RequestDataGenerator
@@ -712,4 +720,85 @@ class StressTester:
             "elapsed_time": elapsed_time,
             "completed_requests": completed_requests,
             "results_available": test_id in self.results
+        }
+
+    async def acquire_session(self, test_id: str, login_url: str, login_method: str, credentials: Dict[str, Any], account_id: str = None):
+        """Acquire a session for authentication"""
+        try:
+            if test_id not in self.acquired_sessions:
+                self.acquired_sessions[test_id] = []
+                
+            # Create a status entry for this session
+            session_info = {
+                "account": account_id or "Primary Account",
+                "status": "pending",
+                "start_time": datetime.now(),
+                "acquired_at": None,
+                "session_id": None,
+                "error": None
+            }
+            
+            # Add to session status
+            self.acquired_sessions[test_id].append(session_info)
+            
+            async with httpx.AsyncClient() as client:
+                # Make the login request
+                if login_method.upper() == "POST":
+                    response = await client.post(login_url, json=credentials, timeout=10.0)
+                elif login_method.upper() == "GET":
+                    response = await client.get(login_url, params=credentials, timeout=10.0)
+                else:
+                    # Default to POST
+                    response = await client.post(login_url, json=credentials, timeout=10.0)
+                
+                # Check for success
+                if response.status_code >= 200 and response.status_code < 300:
+                    # Extract session cookie or token
+                    cookies = response.cookies
+                    session_cookie = next((cookies.get(k) for k in cookies.keys() if 'session' in k.lower()), None)
+                    
+                    if session_cookie:
+                        session_info["status"] = "acquired"
+                        session_info["acquired_at"] = datetime.now().isoformat()
+                        session_info["session_id"] = session_cookie
+                    else:
+                        # Try to extract token from response
+                        try:
+                            json_response = response.json()
+                            token = json_response.get('token') or json_response.get('access_token')
+                            if token:
+                                session_info["status"] = "acquired"
+                                session_info["acquired_at"] = datetime.now().isoformat()
+                                session_info["session_id"] = token
+                            else:
+                                session_info["status"] = "failed"
+                                session_info["error"] = "No session or token found in response"
+                        except:
+                            session_info["status"] = "failed"
+                            session_info["error"] = "Failed to parse response"
+                else:
+                    session_info["status"] = "failed"
+                    session_info["error"] = f"HTTP {response.status_code}: {response.text}"
+            
+            return session_info
+        except Exception as e:
+            logger.error(f"Error acquiring session: {str(e)}")
+            if test_id in self.acquired_sessions and len(self.acquired_sessions[test_id]) > 0:
+                self.acquired_sessions[test_id][-1]["status"] = "failed"
+                self.acquired_sessions[test_id][-1]["error"] = str(e)
+            return {"status": "failed", "error": str(e)}
+    
+    def get_session_status(self, test_id: str) -> Dict[str, Any]:
+        """Get the session acquisition status for a test"""
+        if test_id not in self.acquired_sessions:
+            return {
+                "test_id": test_id,
+                "status": "not_found",
+                "acquired_sessions": []
+            }
+        
+        return {
+            "test_id": test_id,
+            "status": "running" if self.active_tests.get(test_id, False) else "completed",
+            "acquired_sessions": self.acquired_sessions.get(test_id, [])
         }

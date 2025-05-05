@@ -163,3 +163,31 @@ export type StressTestResponse = {
   config: StressTestConfig;
   start_time: string;
 };
+
+// Test Progress types
+export interface TestProgress {
+  test_id: string;
+  status: string;
+  elapsed_time: number;
+  completed_requests: number;
+  results_available: boolean;
+}
+
+// Session Status types
+export interface SessionInfo {
+  account?: string;
+  username?: string;
+  token_id?: string;
+  status: string;
+  acquired_at?: string;
+  session_id?: string;
+  error?: string;
+}
+
+export interface SessionStatus {
+  test_id: string;
+  status: string;
+  auth_type?: string;
+  login_endpoint?: string;
+  acquired_sessions: SessionInfo[];
+}

@@ -278,3 +278,19 @@ class TestResultsResponse(BaseModel):
     total: int = Field(..., description="Total number of results matching the filter")
     limit: int = Field(..., description="Maximum number of results returned")
     offset: int = Field(..., description="Number of results skipped")
+
+class SessionInfo(BaseModel):
+    account: Optional[str] = Field(None, description="Account identifier")
+    username: Optional[str] = Field(None, description="Username for basic auth")
+    token_id: Optional[str] = Field(None, description="Token identifier")
+    status: str = Field(..., description="Status of the session: acquired, failed, valid, invalid")
+    acquired_at: Optional[str] = Field(None, description="Timestamp when session was acquired")
+    session_id: Optional[str] = Field(None, description="Session identifier")
+    error: Optional[str] = Field(None, description="Error message if session acquisition failed")
+
+class SessionStatusResponse(BaseModel):
+    test_id: str = Field(..., description="Unique identifier for the test")
+    status: TestStatus = Field(..., description="Current test status")
+    auth_type: Optional[str] = Field(None, description="Authentication type")
+    login_endpoint: Optional[str] = Field(None, description="Login endpoint for session authentication")
+    acquired_sessions: List[SessionInfo] = Field(default_factory=list, description="List of acquired sessions")
