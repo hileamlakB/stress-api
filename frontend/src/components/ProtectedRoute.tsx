@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [isVerified, setIsVerified] = useState<boolean>(true);
+  const [isVerified, setIsVerified] = useState<boolean>(false); // Default to false for safety
   const [userEmail, setUserEmail] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -24,9 +24,15 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           
           // Check if user has email verification
           const emailVerified = user.email_confirmed_at || user.confirmed_at;
+          console.log('User:', user);
+          console.log('Email verification status:', !!emailVerified);
+          console.log('email_confirmed_at:', user.email_confirmed_at);
+          console.log('confirmed_at:', user.confirmed_at);
+          
           setIsVerified(!!emailVerified);
           setIsAuthenticated(true);
         } else {
+          console.log('No user found');
           setIsAuthenticated(false);
         }
       } catch (error) {
@@ -39,6 +45,16 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
     checkAuth();
   }, []);
+
+  // Always log the current state when it changes
+  useEffect(() => {
+    console.log('Protected Route State:', {
+      isAuthenticated,
+      isVerified,
+      userEmail,
+      isLoading
+    });
+  }, [isAuthenticated, isVerified, userEmail, isLoading]);
 
   if (isLoading) {
     return (
@@ -54,6 +70,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
   // If authenticated but email not verified, show verification screen
   if (!isVerified) {
+    console.log('User is not verified, showing verification screen');
     return (
       <div className="flex items-center justify-center min-h-screen p-4">
         <EmailVerification 
@@ -65,5 +82,6 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
+  console.log('User is authenticated and verified, showing protected content');
   return <>{children}</>;
 }; 

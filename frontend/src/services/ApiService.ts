@@ -1,4 +1,5 @@
 import { EndpointSchema } from '../types/api';
+import { supabase } from '../lib/supabase';
 
 /**
  * Service for interacting with the backend API
@@ -16,6 +17,26 @@ export class ApiService {
   }
 
   /**
+   * Get authentication headers for API requests
+   */
+  private async getAuthHeaders(): Promise<HeadersInit> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    // Get the current session
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data.session?.access_token;
+
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    return headers;
+  }
+
+  /**
    * Fetch API endpoints from an OpenAPI specification
    * @param targetUrl The URL of the target API
    * @returns Array of endpoints
@@ -24,9 +45,7 @@ export class ApiService {
     try {
       const response = await fetch('/api/openapi-endpoints', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify({ target_url: targetUrl }),
       });
 
@@ -52,9 +71,7 @@ export class ApiService {
     try {
       const response = await fetch('/api/advanced-test', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify(config),
       });
 
@@ -79,9 +96,7 @@ export class ApiService {
     try {
       const response = await fetch('/api/validate-target', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify({ target_url: targetUrl }),
       });
 
@@ -103,7 +118,9 @@ export class ApiService {
    */
   async fetchDistributionStrategies() {
     try {
-      const response = await fetch('/api/distribution-strategies');
+      const response = await fetch('/api/distribution-strategies', {
+        headers: await this.getAuthHeaders(),
+      });
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -123,7 +140,9 @@ export class ApiService {
    */
   async fetchDistributionRequirements() {
     try {
-      const response = await fetch('/api/distribution-requirements');
+      const response = await fetch('/api/distribution-requirements', {
+        headers: await this.getAuthHeaders(),
+      });
       
       if (!response.ok) {
         const errorData = await response.json();
@@ -146,9 +165,7 @@ export class ApiService {
     try {
       const response = await fetch('/api/generate-sample-data', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         body: JSON.stringify(endpoint),
       });
 
@@ -179,10 +196,7 @@ export class ApiService {
       
       const response = await fetch(`/api/user/${encodeURIComponent(email)}/sessions`, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
       });
 
@@ -275,10 +289,7 @@ export class ApiService {
         // If user not found, create a new user
         const userResponse = await fetch('/api/users', {
           method: 'POST',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
+          headers: await this.getAuthHeaders(),
           credentials: 'include',
           body: JSON.stringify({
             email: email,
@@ -303,10 +314,7 @@ export class ApiService {
       
       const response = await fetch('/api/sessions', {
         method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify({
           user_id: userId,
@@ -344,10 +352,7 @@ export class ApiService {
       
       const response = await fetch('/api/sessions/direct', {
         method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify({
           email,
@@ -393,10 +398,7 @@ export class ApiService {
     try {
       const response = await fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify({
           name,
@@ -426,10 +428,7 @@ export class ApiService {
     try {
       const response = await fetch(`/api/sessions/${sessionId}`, {
         method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
       });
 
@@ -455,10 +454,7 @@ export class ApiService {
     try {
       const response = await fetch(`/api/sessions/configuration?user_email=${encodeURIComponent(userEmail)}`, {
         method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: await this.getAuthHeaders(),
         credentials: 'include',
         body: JSON.stringify(config),
       });
