@@ -1,9 +1,148 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { RefreshCw, Filter, Link, Info } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';
 import apiService from '../../../services/ApiService';
+import React from 'react';
 
+// Checkbox component that manages its own state
+const EndpointCheckbox = React.memo(({ 
+  isChecked,
+  onChange
+}: { 
+  isChecked: boolean;
+  onChange: (isChecked: boolean) => void;
+}) => {
+  return (
+    <input
+      type="checkbox"
+      checked={isChecked}
+      onChange={(e) => onChange(e.target.checked)}
+      onClick={(e) => e.stopPropagation()}
+      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+    />
+  );
+});
+
+// Individual endpoint row component - memoized to prevent rerendering when other rows change
+const EndpointRow = React.memo(({ 
+  endpoint, 
+  isSelected,
+  onToggle, 
+  onDetails 
+}: { 
+  endpoint: any; 
+  isSelected: boolean;
+  onToggle: (endpoint: any, isSelected: boolean) => void; 
+  onDetails: (endpoint: any) => void;
+}) => {
+  // Handlers that don't cause parent rerenders
+  const handleRowClick = useCallback(() => {
+    onToggle(endpoint, !isSelected);
+  }, [endpoint, isSelected, onToggle]);
+
+  const handleCheckboxChange = useCallback((checked: boolean) => {
+    onToggle(endpoint, checked);
+  }, [endpoint, onToggle]);
+
+  const handleDetailsClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDetails(endpoint);
+  }, [endpoint, onDetails]);
+
+  // Get endpoint key
+  const endpointKey = `${endpoint.method} ${endpoint.path}`;
+
+  return (
+    <div 
+      onClick={handleRowClick}
+      className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+    >
+      <div className="w-8">
+        <EndpointCheckbox 
+          isChecked={isSelected} 
+          onChange={handleCheckboxChange}
+        />
+      </div>
+      <div className="w-16">
+        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+          endpoint.method === 'GET' 
+            ? 'bg-blue-100 text-blue-800' 
+            : endpoint.method === 'POST'
+            ? 'bg-green-100 text-green-800'
+            : endpoint.method === 'PUT'
+            ? 'bg-yellow-100 text-yellow-800'
+            : endpoint.method === 'DELETE'
+            ? 'bg-red-100 text-red-800'
+            : 'bg-gray-100 text-gray-800'
+        }`}>
+          {endpoint.method}
+        </span>
+      </div>
+      <div className="flex-1 text-sm text-gray-700">
+        {endpoint.path}
+      </div>
+      <div 
+        className="w-24 text-xs text-gray-500 flex items-center justify-between hover:text-blue-500 cursor-pointer group"
+        onClick={handleDetailsClick}
+      >
+        <span className="truncate mr-1">{endpoint.summary || endpoint.description || '-'}</span>
+        <Info className="h-4 w-4 flex-shrink-0 opacity-70 group-hover:opacity-100" />
+      </div>
+    </div>
+  );
+});
+
+// Isolate endpoint list to prevent rerendering
+const EndpointList = React.memo(({
+  endpoints,
+  selectedKeys,
+  onToggleEndpoint,
+  onShowDetails
+}: {
+  endpoints: any[];
+  selectedKeys: Set<string>;
+  onToggleEndpoint: (endpoint: any, isSelected: boolean) => void;
+  onShowDetails: (endpoint: any) => void;
+}) => {
+  // Empty state
+  if (endpoints.length === 0) {
+    return (
+      <div className="px-4 py-3 text-sm text-gray-600">
+        No endpoints match your filter
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {endpoints.map((endpoint) => {
+        const key = `${endpoint.method} ${endpoint.path}`;
+        return (
+          <EndpointRow
+            key={key}
+            endpoint={endpoint}
+            isSelected={selectedKeys.has(key)}
+            onToggle={onToggleEndpoint}
+            onDetails={onShowDetails}
+          />
+        );
+      })}
+    </>
+  );
+}, (prevProps, nextProps) => {
+  // Deep comparison of selectedKeys set
+  if (prevProps.endpoints !== nextProps.endpoints) return false;
+  if (prevProps.selectedKeys.size !== nextProps.selectedKeys.size) return false;
+  
+  for (const key of prevProps.selectedKeys) {
+    if (!nextProps.selectedKeys.has(key)) return false;
+  }
+  
+  return true;
+});
+
+// Main component
 export function EndpointSelectionStep() {
   const { 
     baseUrl,
@@ -17,30 +156,38 @@ export function EndpointSelectionStep() {
     setEndpointMethodFilter
   } = useWizard();
 
+  // ---- LOCAL STATE ----
   const [isLoadingEndpoints, setIsLoadingEndpoints] = useState(false);
   const [endpointFilter, setEndpointFilter] = useState('');
   const [advancedFiltering, setAdvancedFiltering] = useState(false);
   const [showDetailsCard, setShowDetailsCard] = useState(false);
   const [selectedEndpointDetails, setSelectedEndpointDetails] = useState<any>(null);
   
-  // Refs for maintaining scroll position
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollPositionRef = useRef(0);
+  // Create a local selection state using a Set for efficient lookups
+  const [localSelectedKeys, setLocalSelectedKeys] = useState(() => {
+    return new Set(selectedEndpoints);
+  });
   
-  // Save scroll position before any state updates that might cause rerenders
-  const saveScrollPosition = () => {
-    if (scrollContainerRef.current) {
-      scrollPositionRef.current = scrollContainerRef.current.scrollTop;
-    }
-  };
+  // Sync from context when component mounts
+  React.useEffect(() => {
+    setLocalSelectedKeys(new Set(selectedEndpoints));
+  }, [selectedEndpoints]);
   
-  // Restore scroll position after component updates
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollPositionRef.current;
-    }
-  }, [activeEndpointTab, endpointMethodFilter]);
-
+  // Sync to context only when unmounting or proceeding to next step
+  React.useEffect(() => {
+    return () => {
+      if (localSelectedKeys.size !== selectedEndpoints.length) {
+        setSelectedEndpoints(Array.from(localSelectedKeys));
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Update wizard context when user proceeds to next step
+  const syncSelectionToContext = useCallback(() => {
+    setSelectedEndpoints(Array.from(localSelectedKeys));
+  }, [localSelectedKeys, setSelectedEndpoints]);
+  
   // Group endpoints into tabs based on URL patterns
   const endpointGroups = useMemo(() => {
     // Start with the "all" group
@@ -112,6 +259,8 @@ export function EndpointSelectionStep() {
     return filtered;
   }, [endpoints, endpointGroups, activeEndpointTab, endpointMethodFilter, endpointFilter]);
   
+  // ---- EVENT HANDLERS ----
+  
   const fetchEndpoints = async () => {
     if (!baseUrl) {
       alert('Please enter a FastAPI Base URL in the previous step');
@@ -175,36 +324,49 @@ export function EndpointSelectionStep() {
     }
   };
 
-  const handleSelectAllEndpoints = () => {
-    setSelectedEndpoints(endpoints.map(endpoint => `${endpoint.method} ${endpoint.path}`));
-  };
+  // --- SELECTION HANDLERS (operate on local state) ---
+  
+  // Toggle a single endpoint's selection
+  const handleToggleEndpoint = useCallback((endpoint: any, isSelected: boolean) => {
+    const key = `${endpoint.method} ${endpoint.path}`;
+    setLocalSelectedKeys(prev => {
+      const newSet = new Set(prev);
+      if (isSelected) {
+        newSet.add(key);
+      } else {
+        newSet.delete(key);
+      }
+      return newSet;
+    });
+  }, []);
 
-  const handleClearSelection = () => {
-    setSelectedEndpoints([]);
-  };
+  // Select all endpoints
+  const handleSelectAllEndpoints = useCallback(() => {
+    const newSet = new Set<string>();
+    endpoints.forEach(endpoint => {
+      newSet.add(`${endpoint.method} ${endpoint.path}`);
+    });
+    setLocalSelectedKeys(newSet);
+  }, [endpoints]);
 
-  const handleToggleEndpoint = (endpoint: any) => {
-    const endpointKey = `${endpoint.method} ${endpoint.path}`;
-    if (selectedEndpoints.includes(endpointKey)) {
-      setSelectedEndpoints(selectedEndpoints.filter(ep => ep !== endpointKey));
-    } else {
-      setSelectedEndpoints([...selectedEndpoints, endpointKey]);
-    }
-  };
+  // Clear all selections
+  const handleClearSelection = useCallback(() => {
+    setLocalSelectedKeys(new Set());
+  }, []);
 
-  // Handler for the details click
-  const handleDetailsClick = (e: React.MouseEvent, endpoint: any) => {
-    e.stopPropagation(); // Prevent triggering the row's onClick (which toggles selection)
+  // Show details modal for an endpoint
+  const handleShowDetails = useCallback((endpoint: any) => {
     setSelectedEndpointDetails(endpoint);
     setShowDetailsCard(true);
-  };
+  }, []);
 
-  // Function to close the details card
-  const closeDetailsCard = () => {
+  // Close the details modal
+  const closeDetailsCard = useCallback(() => {
     setShowDetailsCard(false);
     setSelectedEndpointDetails(null);
-  };
+  }, []);
 
+  // ---- UI ----
   return (
     <div className="space-y-6">
       <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -334,74 +496,33 @@ export function EndpointSelectionStep() {
               <div className="w-24 text-xs font-medium text-gray-500">DETAILS</div>
             </div>
             
-            <div 
-              ref={scrollContainerRef}
-              className="max-h-64 overflow-y-auto"
-            >
-              {filteredEndpoints.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-gray-600">
-                  No endpoints match your filter
-                </div>
-              ) : (
-                filteredEndpoints.map((endpoint, index) => {
-                  const endpointKey = `${endpoint.method} ${endpoint.path}`;
-                  const isSelected = selectedEndpoints.includes(endpointKey);
-                  
-                  return (
-                    <div 
-                      key={index}
-                      onClick={() => {
-                        saveScrollPosition();
-                        handleToggleEndpoint(endpoint);
-                      }}
-                      className={`flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer ${
-                        index !== filteredEndpoints.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
-                    >
-                      <div className="w-8">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                        />
-                      </div>
-                      <div className="w-16">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                          endpoint.method === 'GET' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : endpoint.method === 'POST'
-                            ? 'bg-green-100 text-green-800'
-                            : endpoint.method === 'PUT'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : endpoint.method === 'DELETE'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {endpoint.method}
-                        </span>
-                      </div>
-                      <div className="flex-1 text-sm text-gray-700">
-                        {endpoint.path}
-                      </div>
-                      <div 
-                        className="w-24 text-xs text-gray-500 truncate flex items-center hover:text-blue-500 cursor-pointer"
-                        onClick={(e) => handleDetailsClick(e, endpoint)}
-                      >
-                        <span className="truncate">{endpoint.summary || endpoint.description || '-'}</span>
-                        <Info className="h-3.5 w-3.5 ml-1" />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+            {/* This is the CRITICAL component - it's memoized so selection changes don't rerender it */}
+            <div className="max-h-64 overflow-y-auto">
+              <EndpointList
+                endpoints={filteredEndpoints}
+                selectedKeys={localSelectedKeys}
+                onToggleEndpoint={handleToggleEndpoint}
+                onShowDetails={handleShowDetails}
+              />
             </div>
           </div>
           
           <div className="mt-2 text-sm text-gray-500">
-            {selectedEndpoints.length > 0 ? 
-              `Selected ${selectedEndpoints.length} endpoint${selectedEndpoints.length === 1 ? '' : 's'}` : 
+            {localSelectedKeys.size > 0 ? 
+              `Selected ${localSelectedKeys.size} endpoint${localSelectedKeys.size === 1 ? '' : 's'}` : 
               'No endpoints selected yet. Please select at least one endpoint to continue.'}
+          </div>
+          
+          {/* CRITICAL: Sync selections to context on Next click */}
+          <div className="mt-6 flex justify-end">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={syncSelectionToContext}
+              className="inline-flex items-center"
+            >
+              Save Selection
+            </Button>
           </div>
         </>
       )}
