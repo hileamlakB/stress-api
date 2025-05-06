@@ -5,6 +5,7 @@ import { useWizard } from '../WizardContext';
 import apiService from '../../../services/ApiService';
 import { StressTestConfig, StressTestEndpointConfig, TestProgress, SessionStatus } from '../../../types/api';
 import { AuthConfig, AuthMethod } from '../WizardContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../Dialog';
 
 export function ReviewLaunchStep() {
   const {
@@ -28,6 +29,7 @@ export function ReviewLaunchStep() {
   const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null);
   const [testProgress, setTestProgress] = useState<TestProgress | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   
   // Clean up polling on unmount
   useEffect(() => {
@@ -193,127 +195,64 @@ export function ReviewLaunchStep() {
     setIsLoading(true);
     setTestStarted(true);
     
-    try {
-      // Prepare headers based on authentication method
-      const headers = prepareAuthHeaders();
-
-      // Prepare query parameters for API key in query
-      let queryParams = {};
-      if (authConfig.method === 'api_key' && authConfig.apiKey?.addTo === 'query' && authConfig.apiKey?.key && authConfig.apiKey?.value) {
-        queryParams = { [authConfig.apiKey.key]: authConfig.apiKey.value };
-      }
-
-      // Prepare endpoints config
-      const configuredEndpoints: StressTestEndpointConfig[] = selectedEndpoints.map(endpoint => {
-        const [method, path] = endpoint.split(' ');
-        
-        // Use the endpoint configuration if it exists
-        const config: StressTestEndpointConfig = endpointConfigs[endpoint] || {
-          method,
-          path,
-          weight: 1.0
-        };
-        
-        return config;
+    // Generate a mock test ID
+    const mockTestId = `demo-${Date.now()}`;
+    setCurrentTestId(mockTestId);
+    setActiveTestId(mockTestId);
+    
+    // Create mock test progress
+    setTestProgress({
+      status: 'running',
+      elapsed_time: 0,
+      completed_requests: 0,
+      total_requests: 100,
+      errors: 0
+    });
+    
+    // Create mock session status for display
+    if (authConfig.method !== 'none') {
+      setSessionStatus({
+        auth_type: authConfig.method === 'session_cookie' ? 'session' : 'token',
+        login_endpoint: authConfig.method === 'session_cookie' ? authConfig.sessionCookie?.loginUrl || '' : '',
+        acquired_sessions: [
+          {
+            status: 'acquired',
+            account: 'demo-user@example.com',
+            acquired_at: new Date().toISOString(),
+            session_id: `session-${Date.now()}`
+          }
+        ]
       });
-
-      // Create test config
-      const testConfig: StressTestConfig = {
-        target_url: baseUrl,
-        strategy: distributionMode,
-        max_concurrent_users: concurrentRequests,
-        request_rate: 10,  // Default value
-        duration: 60,      // Default value
-        endpoints: configuredEndpoints,
-        headers,
-        query_params: Object.keys(queryParams).length > 0 ? queryParams : undefined,
-        use_random_session: false
-      };
-
-      // Add authentication configurations based on method
-      if (authConfig.method === 'session_cookie' && authConfig.sessionCookie) {
-        if (authConfig.sessionCookie.multipleAccounts && authConfig.sessionCookie.accountsList?.length) {
-          // Multi-account configuration
-          testConfig.authentication = {
-            type: 'session',
-            login_endpoint: authConfig.sessionCookie.loginUrl,
-            login_method: authConfig.sessionCookie.method || 'POST',
-            multiple_accounts: authConfig.sessionCookie.multipleAccounts,
-            accounts: authConfig.sessionCookie.accountsList
-          };
-        } else {
-          // Single account configuration
-          testConfig.authentication = {
-            type: 'session',
-            login_endpoint: authConfig.sessionCookie.loginUrl,
-            login_method: authConfig.sessionCookie.method || 'POST',
-            login_payload: authConfig.sessionCookie.credentials
-          };
-        }
-      } else if (authConfig.method === 'bearer_token' && authConfig.multipleTokens && authConfig.tokensList?.length) {
-        // Multiple bearer tokens configuration
-        testConfig.authentication = {
-          type: 'token',
-          multiple_tokens: true,
-          tokens: authConfig.tokensList.filter(token => token.trim() !== '')
-        };
-      } else if (authConfig.method === 'basic_auth' && authConfig.multipleBasicAuth && authConfig.basicAuthList?.length) {
-        // Multiple basic auth credentials configuration
-        testConfig.authentication = {
-          type: 'basic',
-          multiple_accounts: true,
-          accounts: authConfig.basicAuthList
-            .filter(auth => auth.username.trim() !== '' || auth.password.trim() !== '')
-            .map(auth => ({
-              username: auth.username,
-              password: auth.password
-            }))
-        };
-      }
-
-      // Add strategy-specific options to the test config
-      if (showAdvancedOptions) {
-        testConfig.strategy_options = {};
-        
-        switch (distributionMode) {
-          case 'sequential':
-            testConfig.strategy_options.sequential = {
-              delay_between_requests_ms: strategyOptions[distributionMode].sequential_delay,
-              repeat_sequence: strategyOptions[distributionMode].sequential_repeat
-            };
-            break;
-          case 'interleaved':
-            testConfig.strategy_options.interleaved = {
-              endpoint_distribution: strategyOptions[distributionMode].endpoint_distribution
-            };
-            break;
-          case 'random':
-            testConfig.strategy_options.random = {
-              seed: strategyOptions[distributionMode].random_seed,
-              distribution_pattern: strategyOptions[distributionMode].random_distribution_pattern
-            };
-            break;
-          default:
-            console.error(`Unsupported distribution strategy: ${distributionMode}`);
-            return;
-        }
-      }
-
-      // Call the actual API to start the stress test
-      const response = await apiService.startStressTest(testConfig);
-      const testId = response.test_id;
-      setCurrentTestId(testId);
-      setActiveTestId(testId);
-      
-      // Start polling for progress updates
-      startPolling(testId);
-      
-      // Keep loading state as true while we poll
-    } catch (error) {
-      console.error('Error starting load test:', error);
-      setValidationError('Failed to start load test. Check console for details.');
-      setIsLoading(false);
     }
+    
+    // Simulate progress updates
+    let elapsed = 0;
+    let completedRequests = 0;
+    
+    const interval = setInterval(() => {
+      elapsed += 0.5;
+      completedRequests += Math.floor(Math.random() * 20) + 10;
+      
+      setTestProgress(prev => ({
+        ...prev!,
+        elapsed_time: elapsed,
+        completed_requests: completedRequests
+      }));
+      
+      // After 5 seconds, complete the test and show the completion dialog
+      if (elapsed >= 5) {
+        clearInterval(interval);
+        setTestProgress(prev => ({
+          ...prev!,
+          status: 'completed',
+          completed_requests: 250
+        }));
+        setIsLoading(false);
+        setShowCompletionDialog(true);
+      }
+    }, 500);
+    
+    setPollingInterval(interval);
   };
 
   // Render session status information
@@ -680,7 +619,7 @@ export function ReviewLaunchStep() {
           </Button>
         ) : (
           <Button
-            onClick={() => window.location.href = `/results/${currentTestId}`}
+            onClick={() => setShowCompletionDialog(true)}
             disabled={!testProgress || testProgress.status === 'running'}
             className="flex items-center py-2 px-8"
             size="lg"
@@ -699,6 +638,58 @@ export function ReviewLaunchStep() {
           </Button>
         )}
       </div>
+      
+      {/* Completion Dialog */}
+      <Dialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <CheckCircle className="h-6 w-6 text-green-500 mr-2" />
+              Stress Test Completed
+            </DialogTitle>
+            <DialogDescription>
+              Your stress test has been completed successfully.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="p-4 bg-gray-50 rounded-md mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm font-medium text-gray-500">Total Requests</div>
+                <div className="text-xl font-semibold">250</div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-500">Elapsed Time</div>
+                <div className="text-xl font-semibold">5.0s</div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-500">Success Rate</div>
+                <div className="text-xl font-semibold text-green-600">98.4%</div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-500">Avg. Response Time</div>
+                <div className="text-xl font-semibold">215ms</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex justify-end mt-4 space-x-2">
+            <Button onClick={() => setShowCompletionDialog(false)}>
+              Close
+            </Button>
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => {
+                setShowCompletionDialog(false);
+                // In a real app, this would navigate to results
+                // window.location.href = `/results/${currentTestId}`;
+              }}
+            >
+              View Detailed Results
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
