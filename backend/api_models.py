@@ -142,6 +142,9 @@ class StressTestConfig(BaseModel):
     endpoints: List[StressTestEndpointConfig] = Field(..., min_items=1, description="List of endpoints to test")
     headers: Optional[Dict[str, str]] = Field(None, description="Optional request headers")
     use_random_session: bool = Field(False, description="Whether to use random sessions for testing")
+    query_params: Optional[Dict[str, str]] = Field(None, description="Optional query parameters")
+    strategy_options: Optional[Dict[str, Any]] = Field(None, description="Additional options for the distribution strategy")
+    authentication: Optional[Dict[str, Any]] = Field(None, description="Authentication configuration")
 
 class StressTestProgressResponse(BaseModel):
     test_id: str = Field(..., description="Unique identifier for the test")
@@ -294,3 +297,48 @@ class SessionStatusResponse(BaseModel):
     auth_type: Optional[str] = Field(None, description="Authentication type")
     login_endpoint: Optional[str] = Field(None, description="Login endpoint for session authentication")
     acquired_sessions: List[SessionInfo] = Field(default_factory=list, description="List of acquired sessions")
+
+# New task-related models
+class TaskStatus(str, Enum):
+    """Status of a background task"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+class TaskSubmitRequest(BaseModel):
+    """Request model for submitting a task to the queue"""
+    task_type: str
+    params: Dict[str, Any]
+    user_id: Optional[str] = None
+
+class TaskSubmitResponse(BaseModel):
+    """Response model for task submission"""
+    task_id: str
+    status: TaskStatus
+    message: str
+
+class TaskStatusResponse(BaseModel):
+    """Response model for task status"""
+    task_id: str
+    task_type: str
+    status: TaskStatus
+    progress: int = 0
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    current_operation: str = "Initializing"
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+    user_id: Optional[str] = None
+
+class TaskListResponse(BaseModel):
+    """Response model for listing tasks"""
+    tasks: List[TaskStatusResponse]
+    total: int
+
+class StressTestTaskRequest(BaseModel):
+    """Request model for submitting a stress test task"""
+    user_id: Optional[str] = None
+    config: StressTestConfig

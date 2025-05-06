@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, Header
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
@@ -7,7 +7,7 @@ import httpx
 import asyncio
 import logging
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 import random
 import json
 import sys
@@ -55,7 +55,13 @@ from api_models import (
     TestResultsFilterRequest,
     TestResultsResponse,
     SessionStatusResponse,
-    SessionInfo
+    SessionInfo,
+    TaskSubmitRequest,
+    TaskSubmitResponse,
+    TaskStatusResponse,
+    TaskListResponse,
+    StressTestTaskRequest,
+    TaskStatus
 )
 from metrics_generator import metrics_manager
 from backend.database.database import get_db
@@ -90,6 +96,11 @@ from backend.config.settings import CORS_ORIGINS  # Keep this, but remove USER_S
 
 # Add this new import and dependency function
 from backend.services.supabase_service import supabase_service
+
+# Import task queue modules
+from task_queue.initialize import initialize_task_queue
+from task_queue.task_manager import TaskManager
+from task_queue import db_interface as task_db
 
 async def verify_email_confirmed(authorization: str = Header(None)):
     """Dependency to check if a user's email is verified"""
@@ -272,6 +283,9 @@ app.add_middleware(
 
 # Initialize stress tester
 stress_tester = StressTester()
+
+# Initialize the task queue system
+task_manager = initialize_task_queue(app)
 
 # Distribution strategies requirements - can be moved to a separate file for better organization
 class RequirementField(BaseModel):
@@ -527,361 +541,139 @@ async def generate_sample_data(endpoint: EndpointSchema):
             detail=f"Error generating sample data: {str(e)}"
         )
 
-# Endpoint to start stress test
-@app.post("/api/test/start", response_model=TestStartResponse)
+# Endpoint to start stress test - redirect to the task-based version
+@app.post("/api/test/start", response_model=TaskSubmitResponse, deprecated=True)
 async def start_test(config: TestConfigRequest, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        test_id = str(uuid.uuid4())
-        
-        # Store test configuration in the database if a session_id is provided
-        session_config = None
-        if hasattr(config, 'session_id') and config.session_id:
-            try:
-                session_id = uuid.UUID(config.session_id)
-                session = get_session(db, session_id)
-                
-                if session:
-                    # Create a session configuration for this test
-                    session_config = create_session_config(
-                        db,
-                        session_id=session_id,
-                        endpoint_url=str(config.target_url),
-                        http_method="MULTIPLE",  # This test can use multiple methods
-                        concurrent_users=config.concurrent_users,
-                        ramp_up_time=0,  # Not applicable for this test type
-                        test_duration=config.duration,
-                        think_time=0,  # Not applicable for this test type
-                        request_headers=config.headers,
-                        request_params=None,  # Not applicable for this test type
-                        success_criteria=None  # Not applicable for this test type
-                    )
-            except (ValueError, Exception) as e:
-                logger.warning(f"Could not store test configuration: {str(e)}")
-        
-        # Start the test
-        await stress_tester.start_test(
-            test_id=test_id,
-            target_url=config.target_url,
-            concurrent_users=config.concurrent_users,
-            request_rate=config.request_rate,
-            duration=config.duration,
-            endpoints=config.endpoints,
-            headers=config.headers,
-            payload_data=config.payload_data
-        )
-        
-        # Store initial test result in the database if we have a session configuration
-        if session_config:
-            create_test_result(
-                db,
-                configuration_id=session_config.id,
-                test_id=test_id,
-                status=TestStatus.RUNNING.value,
-                start_time=datetime.now()
-            )
-        
-        # Store test configuration for later reference
-        test_progress[test_id] = {
-            "status": TestStatus.RUNNING,
-            "config": config,
-            "start_time": datetime.now(),
-            "session_config_id": str(session_config.id) if session_config else None
-        }
-        
-        return TestStartResponse(
-            test_id=test_id,
-            status=TestStatus.RUNNING,
-            config=config,
-            start_time=datetime.now()
-        )
-    except Exception as e:
-        logger.error(f"Error starting test: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error starting test: {str(e)}"
-        )
+    """
+    [DEPRECATED] Start a basic stress test. This endpoint is deprecated.
+    Use /api/stress-test/task instead.
+    """
+    # Convert to the StressTestTaskRequest format
+    from pydantic import create_model
+    
+    # Create the StressTestConfig with the parameters from TestConfigRequest
+    stress_config = StressTestConfig(
+        target_url=config.target_url,
+        strategy=DistributionStrategy.SEQUENTIAL,  # Default to sequential
+        endpoints=[
+            StressTestEndpointConfig(
+                path=endpoint,
+                method="GET",  # Default to GET
+                weight=1
+            ) for endpoint in config.endpoints
+        ],
+        max_concurrent_users=config.concurrent_users,
+        request_rate=config.request_rate,
+        duration=config.duration,
+        headers=config.headers
+    )
+    
+    # Create the StressTestTaskRequest
+    task_request = StressTestTaskRequest(
+        user_id=getattr(config, 'user_id', None),
+        config=stress_config
+    )
+    
+    # Forward to the task-based endpoint
+    return await start_stress_test_task(task_request, db)
 
-# Endpoint to get test results
-@app.get("/api/test/{test_id}/results", response_model=TestResultsResponse)
-async def get_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        if test_id not in stress_tester.results:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test with ID {test_id} not found"
-            )
-        
-        results = stress_tester.results[test_id]
-        test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
-        
-        # Get summary statistics
-        summary = get_test_summary(test_id)
-        
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Update the test result with the latest data
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=test_status.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=results,
-                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
-        return TestResultsResponse(
-            test_id=test_id,
-            status=test_status,
-            results=results,
-            summary=summary
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting test results: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error getting test results: {str(e)}"
-        )
-
-# Endpoint to stop ongoing test
-@app.post("/api/test/{test_id}/stop", response_model=TestStopResponse)
-async def stop_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        if test_id not in stress_tester.active_tests:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test with ID {test_id} not found or already completed"
-            )
-        
-        await stress_tester.stop_test(test_id)
-        test_progress[test_id]["status"] = TestStatus.STOPPED
-        
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Update the test result with the latest data
-                    summary = get_test_summary(test_id)
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=TestStatus.STOPPED.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=stress_tester.results.get(test_id, {}),
-                        end_time=datetime.now()
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
-        return TestStopResponse(
-            test_id=test_id,
-            status=TestStatus.STOPPED,
-            stop_time=datetime.now()
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error stopping test: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error stopping test: {str(e)}"
-        )
-
-# Endpoint to start an advanced stress test with multiple strategies
-@app.post("/api/advanced-test", response_model=TestStartResponse)
+# Endpoint to start an advanced stress test - redirect to the task-based version
+@app.post("/api/advanced-test", response_model=TaskSubmitResponse, deprecated=True)
 async def start_advanced_test(config: StressTestConfig, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        test_id = str(uuid.uuid4())
-        
-        # Store test configuration in the database if a session_id is provided
-        session_config = None
-        if hasattr(config, 'session_id') and config.session_id:
-            try:
-                session_id = uuid.UUID(config.session_id)
-                session = get_session(db, session_id)
-                
-                if session:
-                    # Create a session configuration for this test
-                    session_config = create_session_config(
-                        db,
-                        session_id=session_id,
-                        endpoint_url=str(config.target_url),
-                        http_method="MULTIPLE",  # This test can use multiple methods
-                        concurrent_users=config.max_concurrent_users,
-                        ramp_up_time=0,  # Not applicable for this test type
-                        test_duration=config.duration,
-                        think_time=0,  # Not applicable for this test type
-                        request_headers=config.headers,
-                        request_params=None,  # Not applicable for this test type
-                        success_criteria=None  # Not applicable for this test type
-                    )
-            except (ValueError, Exception) as e:
-                logger.warning(f"Could not store test configuration: {str(e)}")
-        
-        # TRIGGER SESSION ACQUISITION FOR AUTHENTICATION
-        # If the test uses session authentication, attempt to acquire sessions first
-        if hasattr(config, 'authentication') and config.authentication:
-            auth_config = config.authentication
-            
-            # For session cookie authentication
-            if auth_config.get('type') == 'session':
-                login_endpoint = auth_config.get('login_endpoint')
-                login_method = auth_config.get('login_method', 'POST')
-                
-                # For multiple accounts
-                if auth_config.get('multiple_accounts', False):
-                    accounts = auth_config.get('accounts', [])
-                    
-                    # Start session acquisition for each account
-                    for account in accounts:
-                        # Identify the account by a key in the credentials
-                        account_id = None
-                        for key in ['username', 'email', 'user']:
-                            if key in account:
-                                account_id = account[key]
-                                break
-                        
-                        # Launch session acquisition (don't await, handle asynchronously)
-                        asyncio.create_task(stress_tester.acquire_session(
-                            test_id=test_id,
-                            login_url=login_endpoint,
-                            login_method=login_method,
-                            credentials=account,
-                            account_id=account_id
-                        ))
-                
-                # For single account
-                elif auth_config.get('login_payload'):
-                    credentials = auth_config.get('login_payload')
-                    
-                    # Launch session acquisition (don't await, handle asynchronously)
-                    asyncio.create_task(stress_tester.acquire_session(
-                        test_id=test_id,
-                        login_url=login_endpoint,
-                        login_method=login_method,
-                        credentials=credentials
-                    ))
-        
-        # Start the actual stress test based on the distribution strategy
-        if config.strategy == DistributionStrategy.SEQUENTIAL:
-            await stress_tester.start_sequential_test(
-                test_id=test_id,
-                target_url=config.target_url,
-                endpoints=[{
-                    "path": endpoint.path,
-                    "method": endpoint.method,
-                    "custom_parameters": endpoint.custom_parameters
-                } for endpoint in config.endpoints],
-                max_concurrent_users=config.max_concurrent_users,
-                request_rate=config.request_rate,
-                duration=config.duration,
-                headers=config.headers
-            )
-        elif config.strategy == DistributionStrategy.INTERLEAVED:
-            await stress_tester.start_interleaved_test(
-                test_id=test_id,
-                target_url=config.target_url,
-                endpoints=[{
-                    "path": endpoint.path,
-                    "method": endpoint.method,
-                    "weight": endpoint.weight,
-                    "custom_parameters": endpoint.custom_parameters
-                } for endpoint in config.endpoints],
-                max_concurrent_users=config.max_concurrent_users,
-                request_rate=config.request_rate,
-                duration=config.duration,
-                headers=config.headers
-            )
-        elif config.strategy == DistributionStrategy.RANDOM:
-            await stress_tester.start_random_test(
-                test_id=test_id,
-                target_url=config.target_url,
-                endpoints=[{
-                    "path": endpoint.path,
-                    "method": endpoint.method,
-                    "weight": endpoint.weight,
-                    "custom_parameters": endpoint.custom_parameters
-                } for endpoint in config.endpoints],
-                max_concurrent_users=config.max_concurrent_users,
-                request_rate=config.request_rate,
-                duration=config.duration,
-                headers=config.headers
-            )
-        else:
-            raise ValueError(f"Unsupported distribution strategy: {config.strategy}")
-        
-        # Store initial test result in the database if we have a session configuration
-        if session_config:
-            create_test_result(
-                db,
-                configuration_id=session_config.id,
-                test_id=test_id,
-                status=TestStatus.RUNNING.value,
-                start_time=datetime.now()
-            )
-        
-        # Store test configuration for later reference
-        test_progress[test_id] = {
-            "status": TestStatus.RUNNING,
-            "config": config,
-            "start_time": datetime.now(),
-            "session_config_id": str(session_config.id) if session_config else None
-        }
-        
-        return TestStartResponse(
-            test_id=test_id,
-            status=TestStatus.RUNNING,
-            config=config,
-            start_time=datetime.now()
-        )
-    except Exception as e:
-        logger.error(f"Error starting advanced test: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error starting advanced test: {str(e)}"
-        )
+    """
+    [DEPRECATED] Start an advanced stress test. This endpoint is deprecated.
+    Use /api/stress-test/task instead.
+    """
+    # Create the StressTestTaskRequest
+    task_request = StressTestTaskRequest(
+        user_id=getattr(config, 'user_id', None),
+        config=config
+    )
+    
+    # Forward to the task-based endpoint
+    return await start_stress_test_task(task_request, db)
 
-# Endpoint to get advanced test results
-@app.get("/api/stress-test/{test_id}/results", response_model=StressTestResultsResponse)
+# Endpoint to get test results - redirect to the task-based version
+@app.get("/api/test/{test_id}/results", response_model=TestResultsResponse, deprecated=True)
+async def get_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
+    """
+    [DEPRECATED] Get results for a basic stress test. This endpoint is deprecated.
+    Use /api/tasks/{task_id} instead.
+    """
+    # Try to get the task status
+    task = task_manager.get_task_status(test_id)
+    
+    if not task:
+        # Try the database
+        task_record = task_db.get_task_record(db, test_id)
+        
+        if not task_record:
+            # Fall back to the original stress tester
+            if test_id not in stress_tester.results:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Test with ID {test_id} not found"
+                )
+            
+            # Legacy results
+            results = stress_tester.results[test_id]
+            test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
+            summary = get_test_summary(test_id)
+            
+            return TestResultsResponse(
+                test_id=test_id,
+                status=test_status,
+                results=results,
+                summary=summary
+            )
+    
+    # Try to get from task status endpoint
+    task_status = await get_task_status(test_id, db)
+    
+    # Convert the task status response to test results response
+    test_status = TestStatus.RUNNING
+    
+    if task_status.status == TaskStatus.COMPLETED:
+        test_status = TestStatus.COMPLETED
+    elif task_status.status == TaskStatus.FAILED:
+        test_status = TestStatus.FAILED
+    elif task_status.status == TaskStatus.CANCELED:
+        test_status = TestStatus.STOPPED
+    
+    # Extract results and summary from task result
+    results = task_status.result.get("results", {}) if task_status.result else {}
+    summary = task_status.result.get("summary", {}) if task_status.result else {}
+    
+    return TestResultsResponse(
+        test_id=test_id,
+        status=test_status,
+        results=results,
+        summary=summary
+    )
+
+# Endpoint to get advanced test results - redirect to the task-based version
+@app.get("/api/stress-test/{test_id}/results", response_model=StressTestResultsResponse, deprecated=True)
 async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
+    """
+    [DEPRECATED] Get results for an advanced stress test. This endpoint is deprecated.
+    Use /api/tasks/{task_id} instead.
+    """
+    # Try to get the task status
+    task_status = await get_task_status(test_id, db)
+    
+    # If not found via task system, check original stress tester
+    if not task_manager.get_task_status(test_id) and not task_db.get_task_record(db, test_id):
         if test_id not in stress_tester.results:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Test with ID {test_id} not found"
             )
         
-        results = []
+        # Legacy results from the stress tester
         raw_results = stress_tester.results.get(test_id, {})
         
         # Process results for each endpoint
+        results = []
         for endpoint_key, endpoint_results in raw_results.items():
             for result in endpoint_results:
                 results.append(EndpointResult(
@@ -908,7 +700,7 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             "successful_requests": sum(r.success_count for r in results),
             "failed_requests": sum(r.failure_count for r in results),
             "avg_response_time": sum(r.avg_response_time * (r.success_count + r.failure_count) 
-                                    for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
+                                   for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
             "min_response_time": min((r.min_response_time for r in results), default=0),
             "max_response_time": max((r.max_response_time for r in results), default=0),
             "status_codes": {}
@@ -922,33 +714,6 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
                 else:
                     summary["status_codes"][status_code] = count
         
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Update the test result with the latest data
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=test_status.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=raw_results,
-                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
         return StressTestResultsResponse(
             test_id=test_id,
             status=test_status,
@@ -958,71 +723,69 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             results=results,
             summary=summary
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting advanced test results: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error getting advanced test results: {str(e)}"
-        )
+    
+    # Convert the task status response to stress test results response
+    test_status = TestStatus.RUNNING
+    
+    if task_status.status == TaskStatus.COMPLETED:
+        test_status = TestStatus.COMPLETED
+    elif task_status.status == TaskStatus.FAILED:
+        test_status = TestStatus.FAILED
+    elif task_status.status == TaskStatus.CANCELED:
+        test_status = TestStatus.STOPPED
+    
+    # Extract results and summary from task result
+    config = task_status.result.get("config") if task_status.result else None
+    results = task_status.result.get("results", []) if task_status.result else []
+    summary = task_status.result.get("summary", {}) if task_status.result else {}
+    
+    return StressTestResultsResponse(
+        test_id=test_id,
+        status=test_status,
+        config=config,
+        start_time=task_status.created_at,
+        end_time=task_status.completed_at,
+        results=results,
+        summary=summary
+    )
 
-# Endpoint to stop an advanced test
-@app.post("/api/stress-test/{test_id}/stop", response_model=TestStopResponse)
+# Endpoint to stop a test - redirect to the task-based version
+@app.post("/api/test/{test_id}/stop", response_model=TestStopResponse, deprecated=True)
+async def stop_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
+    """
+    [DEPRECATED] Stop a basic stress test. This endpoint is deprecated.
+    Use /api/tasks/{task_id}/cancel instead.
+    """
+    # Forward to cancel task endpoint
+    task_status = await cancel_task(test_id, db)
+    
+    # Convert the task status response to test stop response
+    test_status = TestStatus.STOPPED
+    
+    return TestStopResponse(
+        test_id=test_id,
+        status=test_status,
+        stop_time=datetime.now()
+    )
+
+# Endpoint to stop an advanced test - redirect to the task-based version
+@app.post("/api/stress-test/{test_id}/stop", response_model=TestStopResponse, deprecated=True)
 async def stop_advanced_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        if test_id not in stress_tester.active_tests:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test with ID {test_id} not found or already completed"
-            )
-        
-        await stress_tester.stop_test(test_id)
-        test_progress[test_id]["status"] = TestStatus.STOPPED
-        
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Get the latest results and update the database
-                    results_response = await get_advanced_test_results(test_id, db)
-                    summary = results_response.summary
-                    
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=TestStatus.STOPPED.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=stress_tester.results.get(test_id, {}),
-                        end_time=datetime.now()
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
-        return TestStopResponse(
-            test_id=test_id,
-            status=TestStatus.STOPPED,
-            stop_time=datetime.now()
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error stopping advanced test: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error stopping advanced test: {str(e)}"
-        )
+    """
+    [DEPRECATED] Stop an advanced stress test. This endpoint is deprecated.
+    Use /api/tasks/{task_id}/cancel instead.
+    """
+    # Forward to cancel task endpoint
+    task_status = await cancel_task(test_id, db)
+    
+    # Convert the task status response to test stop response
+    test_status = TestStatus.STOPPED
+    
+    return TestStopResponse(
+        test_id=test_id,
+        status=test_status,
+        stop_time=datetime.now()
+    )
 
 # Endpoint to get user sessions
 @app.get("/api/user/{email}/sessions", response_model=UserSessionsResponse)
@@ -1944,6 +1707,444 @@ async def generate_fake_data(request: dict, current_user: Optional[User] = Depen
         raise HTTPException(
             status_code=500,
             detail=f"Error generating fake data: {str(e)}"
+        )
+
+# Submit a new task
+@app.post("/api/tasks", response_model=TaskSubmitResponse)
+async def submit_task(
+    request: TaskSubmitRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Submit a new background task"""
+    try:
+        # Check if the task type is supported
+        if request.task_type not in task_manager.task_handlers:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported task type: {request.task_type}"
+            )
+        
+        # Submit the task to the queue
+        task_id = task_manager.submit_task(
+            task_type=request.task_type,
+            params=request.params,
+            user_id=request.user_id
+        )
+        
+        # Get the task object
+        task = task_manager.get_task_status(task_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create task"
+            )
+        
+        # Create a record in the database
+        task_db.create_task_record(
+            db=db,
+            task_id=task_id,
+            task_type=request.task_type,
+            params=request.params,
+            user_id=request.user_id
+        )
+        
+        # Return task info
+        return TaskSubmitResponse(
+            task_id=task_id,
+            status=TaskStatus(task["status"]),
+            message=f"Task {task_id} submitted successfully"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.exception(f"Error submitting task: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to submit task: {str(e)}"
+        )
+
+# Get task status by ID
+@app.get("/api/tasks/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Get the status of a task by ID"""
+    try:
+        # Try to get from memory first
+        task = task_manager.get_task_status(task_id)
+        
+        # If not in memory, try to get from database
+        if not task:
+            task_record = task_db.get_task_record(db, task_id)
+            if not task_record:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Task {task_id} not found"
+                )
+            
+            # Convert DB record to task status response
+            return TaskStatusResponse(
+                task_id=task_record.task_id,
+                task_type=task_record.task_type,
+                status=TaskStatus(task_record.status),
+                progress=task_record.progress,
+                created_at=task_record.created_at,
+                started_at=task_record.started_at,
+                completed_at=task_record.completed_at,
+                current_operation=task_record.current_operation or "Unknown",
+                error=task_record.error,
+                result=task_record.result,
+                user_id=str(task_record.user_id) if task_record.user_id else None
+            )
+        
+        # Convert in-memory task to response
+        return TaskStatusResponse(
+            task_id=task["task_id"],
+            task_type=task["task_type"],
+            status=TaskStatus(task["status"]),
+            progress=task["progress"],
+            created_at=datetime.fromisoformat(task["created_at"]),
+            started_at=datetime.fromisoformat(task["started_at"]) if task["started_at"] else None,
+            completed_at=datetime.fromisoformat(task["completed_at"]) if task["completed_at"] else None,
+            current_operation="Task canceled",
+            error=task["error"],
+            result=task["result"],
+            user_id=task["user_id"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting task status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get task status: {str(e)}"
+        )
+
+# Get tasks for a user
+@app.get("/api/users/{user_id}/tasks", response_model=TaskListResponse)
+async def get_user_tasks(
+    user_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Get all tasks for a specific user"""
+    try:
+        # Get tasks from database
+        db_tasks = task_db.get_tasks_by_user(db, user_id)
+        
+        # Also get any in-memory tasks that might not be in the database yet
+        memory_tasks = task_manager.get_tasks_by_user(user_id)
+        
+        # Merge the two lists, preferring memory tasks when duplicates exist
+        memory_task_ids = [task["task_id"] for task in memory_tasks]
+        filtered_db_tasks = [task for task in db_tasks if task.task_id not in memory_task_ids]
+        
+        # Convert DB tasks to response format
+        response_tasks = []
+        
+        # Add memory tasks
+        for task in memory_tasks:
+            response_tasks.append(TaskStatusResponse(
+                task_id=task["task_id"],
+                task_type=task["task_type"],
+                status=TaskStatus(task["status"]),
+                progress=task["progress"],
+                created_at=datetime.fromisoformat(task["created_at"]),
+                started_at=datetime.fromisoformat(task["started_at"]) if task["started_at"] else None,
+                completed_at=datetime.fromisoformat(task["completed_at"]) if task["completed_at"] else None,
+                current_operation=task["current_operation"],
+                error=task["error"],
+                result=task["result"],
+                user_id=task["user_id"]
+            ))
+        
+        # Add DB tasks
+        for task in filtered_db_tasks:
+            response_tasks.append(TaskStatusResponse(
+                task_id=task.task_id,
+                task_type=task.task_type,
+                status=TaskStatus(task.status),
+                progress=task.progress,
+                created_at=task.created_at,
+                started_at=task.started_at,
+                completed_at=task.completed_at,
+                current_operation=task.current_operation or "Unknown",
+                error=task.error,
+                result=task.result,
+                user_id=str(task.user_id) if task.user_id else None
+            ))
+        
+        # Sort by created_at descending (newest first)
+        sorted_tasks = sorted(response_tasks, key=lambda x: x.created_at, reverse=True)
+        
+        # Apply pagination
+        paginated_tasks = sorted_tasks[offset:offset + limit]
+        
+        # Return response
+        return TaskListResponse(
+            tasks=paginated_tasks,
+            total=len(sorted_tasks)
+        )
+    except Exception as e:
+        logger.exception(f"Error getting user tasks: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get user tasks: {str(e)}"
+        )
+
+# Cancel a task
+@app.post("/api/tasks/{task_id}/cancel", response_model=TaskStatusResponse)
+async def cancel_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Cancel a pending task"""
+    try:
+        # Try to cancel the task
+        canceled = task_manager.cancel_task(task_id)
+        
+        if not canceled:
+            # Check if the task exists
+            task = task_manager.get_task_status(task_id)
+            if not task:
+                # Try to get from database
+                task_record = task_db.get_task_record(db, task_id)
+                if not task_record:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Task {task_id} not found"
+                    )
+                
+                # If the task is already in a final state, return that
+                if task_record.status in ["completed", "failed", "canceled"]:
+                    return TaskStatusResponse(
+                        task_id=task_record.task_id,
+                        task_type=task_record.task_type,
+                        status=TaskStatus(task_record.status),
+                        progress=task_record.progress,
+                        created_at=task_record.created_at,
+                        started_at=task_record.started_at,
+                        completed_at=task_record.completed_at,
+                        current_operation=task_record.current_operation or "Task already finished",
+                        error=task_record.error,
+                        result=task_record.result,
+                        user_id=str(task_record.user_id) if task_record.user_id else None
+                    )
+                
+                # Otherwise, update the database record to canceled
+                task_db.update_task_status(
+                    db=db,
+                    task_id=task_id,
+                    status="canceled",
+                    error="Task canceled by user"
+                )
+                
+                # Get the updated record
+                updated_record = task_db.get_task_record(db, task_id)
+                
+                return TaskStatusResponse(
+                    task_id=updated_record.task_id,
+                    task_type=updated_record.task_type,
+                    status=TaskStatus(updated_record.status),
+                    progress=updated_record.progress,
+                    created_at=updated_record.created_at,
+                    started_at=updated_record.started_at,
+                    completed_at=updated_record.completed_at,
+                    current_operation="Task canceled",
+                    error=updated_record.error,
+                    result=updated_record.result,
+                    user_id=str(updated_record.user_id) if updated_record.user_id else None
+                )
+            
+            # If the task exists but couldn't be canceled, it's probably already running
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Task {task_id} cannot be canceled (status: {task['status']})"
+            )
+        
+        # Get the updated task state
+        task = task_manager.get_task_status(task_id)
+        
+        # Return the task state
+        return TaskStatusResponse(
+            task_id=task["task_id"],
+            task_type=task["task_type"],
+            status=TaskStatus(task["status"]),
+            progress=task["progress"],
+            created_at=datetime.fromisoformat(task["created_at"]),
+            started_at=datetime.fromisoformat(task["started_at"]) if task["started_at"] else None,
+            completed_at=datetime.fromisoformat(task["completed_at"]) if task["completed_at"] else None,
+            current_operation="Task canceled",
+            error=task["error"],
+            result=task["result"],
+            user_id=task["user_id"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error canceling task: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cancel task: {str(e)}"
+        )
+
+# Create a specialized API endpoint for stress tests using the task system
+@app.post("/api/stress-test/task", response_model=TaskSubmitResponse)
+async def start_stress_test_task(
+    request: StressTestTaskRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_email_confirmed)
+):
+    """Start a stress test as an asynchronous task"""
+    try:
+        # Log the incoming request for debugging
+        logger.info(f"Received stress test task request with config: {request.config}")
+        
+        # Basic validation
+        if not request.config.target_url:
+            logger.error("Validation error: Target URL is required")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Target URL is required"
+            )
+        
+        if not request.config.endpoints or len(request.config.endpoints) == 0:
+            logger.error("Validation error: At least one endpoint must be specified")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one endpoint must be specified"
+            )
+        
+        # Log strategy options if present
+        if hasattr(request.config, 'strategy_options') and request.config.strategy_options:
+            logger.info(f"Strategy options provided: {request.config.strategy_options}")
+        
+        # Log authentication configuration if present
+        if hasattr(request.config, 'authentication') and request.config.authentication:
+            auth_type = request.config.authentication.get('type', 'unknown')
+            logger.info(f"Authentication type: {auth_type}")
+            
+            # Validate authentication based on type
+            if auth_type == 'session':
+                if not request.config.authentication.get('login_endpoint'):
+                    logger.error("Validation error: login_endpoint is required for session authentication")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="login_endpoint is required for session authentication"
+                    )
+            elif auth_type == 'token' and request.config.authentication.get('multiple_tokens', False):
+                if not request.config.authentication.get('tokens'):
+                    logger.error("Validation error: tokens list is required when multiple_tokens is true")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="tokens list is required when multiple_tokens is true"
+                    )
+        
+        # Determine if this is a basic or advanced test based on strategy
+        task_type = "stress_test"
+        if hasattr(request.config, 'strategy') and request.config.strategy in [
+            DistributionStrategy.INTERLEAVED, DistributionStrategy.RANDOM
+        ]:
+            task_type = "advanced_stress_test"
+        
+        # Package the config properly
+        task_params = {
+            "config": request.config.dict(),
+            "test_type": "basic" if task_type == "stress_test" else "advanced",
+            "strategy": getattr(request.config, 'strategy', DistributionStrategy.SEQUENTIAL),
+        }
+        
+        # Submit the stress test task
+        task_id = task_manager.submit_task(
+            task_type=task_type,
+            params=task_params,
+            user_id=request.user_id
+        )
+        
+        # Create a record in the database
+        task_db.create_task_record(
+            db=db,
+            task_id=task_id,
+            task_type=task_type,
+            params=task_params,
+            user_id=request.user_id
+        )
+        
+        # If a session_id is provided, create a session config
+        if hasattr(request.config, 'session_id') and request.config.session_id:
+            try:
+                session_id = uuid.UUID(request.config.session_id)
+                session = get_session(db, session_id)
+                
+                if session:
+                    # Create a session configuration for this test
+                    session_config = create_session_config(
+                        db,
+                        session_id=session_id,
+                        endpoint_url=str(request.config.target_url),
+                        http_method="MULTIPLE",  # This test can use multiple methods
+                        concurrent_users=getattr(request.config, 'max_concurrent_users', 10),
+                        ramp_up_time=0,  # Not applicable for this test type
+                        test_duration=getattr(request.config, 'duration', 60),
+                        think_time=0,  # Not applicable for this test type
+                        request_headers=getattr(request.config, 'headers', None),
+                        request_params=None,  # Not applicable for this test type
+                        success_criteria=None  # Not applicable for this test type
+                    )
+                    
+                    # Create test result record
+                    create_test_result(
+                        db,
+                        configuration_id=session_config.id,
+                        test_id=task_id,  # Use task_id as test_id
+                        status=TestStatus.RUNNING.value,
+                        start_time=datetime.now()
+                    )
+            except (ValueError, Exception) as e:
+                logger.warning(f"Could not store test configuration: {str(e)}")
+        
+        # Get the task object
+        task = task_manager.get_task_status(task_id)
+        
+        # Return task info
+        return TaskSubmitResponse(
+            task_id=task_id,
+            status=TaskStatus(task["status"]),
+            message=f"Stress test {task_id} submitted successfully"
+        )
+    except ValidationError as e:
+        # Catch Pydantic validation errors and log them in detail
+        logger.error(f"Validation error in stress test task request: {str(e)}")
+        
+        # Extract detailed validation error information
+        error_details = []
+        for error in e.errors():
+            error_details.append({
+                'loc': ' -> '.join([str(loc) for loc in error['loc']]),
+                'msg': error['msg'],
+                'type': error['type']
+            })
+        
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation error: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error starting stress test task: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start stress test task: {str(e)}"
         )
 
 if __name__ == "__main__":

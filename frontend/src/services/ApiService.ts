@@ -1,6 +1,41 @@
 import { EndpointSchema } from '../types/api';
 import { supabase } from '../lib/supabase';
 
+// Task status enum to match backend
+export enum TaskStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELED = 'canceled'
+}
+
+// Interface for task submission and retrieval
+export interface TaskSubmitResponse {
+  task_id: string;
+  status: TaskStatus;
+  message: string;
+}
+
+export interface TaskStatusResponse {
+  task_id: string;
+  task_type: string;
+  status: TaskStatus;
+  progress: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  current_operation: string;
+  error?: string;
+  result?: any;
+  user_id?: string;
+}
+
+export interface TaskListResponse {
+  tasks: TaskStatusResponse[];
+  total: number;
+}
+
 /**
  * Service for interacting with the backend API
  */
@@ -63,16 +98,29 @@ export class ApiService {
   }
 
   /**
-   * Start a stress test
+   * Start a stress test (using task queue)
    * @param config Test configuration
-   * @returns Test ID and other info
+   * @returns Task information
    */
-  async startStressTest(config: any) {
+  async startStressTest(config: any): Promise<TaskSubmitResponse> {
     try {
-      const response = await fetch('/api/advanced-test', {
+      // Ensure user_id is included if available
+      const userId = await this.getCurrentUserId();
+      if (userId) {
+        config.user_id = userId;
+      }
+      
+      // Create the task request
+      const taskRequest = {
+        user_id: userId,
+        config: config
+      };
+      
+      // Call the task-based endpoint
+      const response = await fetch('/api/stress-test/task', {
         method: 'POST',
         headers: await this.getAuthHeaders(),
-        body: JSON.stringify(config),
+        body: JSON.stringify(taskRequest),
       });
 
       if (!response.ok) {
@@ -85,6 +133,177 @@ export class ApiService {
       console.error('Error starting stress test:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Get the current user ID from Supabase
+   * @returns User ID if available
+   */
+  private async getCurrentUserId(): Promise<string | null> {
+    const { data } = await supabase.auth.getUser();
+    return data?.user?.id || null;
+  }
+  
+  /**
+   * Submit a generic task
+   * @param taskType The type of task to submit
+   * @param params Parameters for the task
+   * @returns Task submission response
+   */
+  async submitTask(taskType: string, params: any): Promise<TaskSubmitResponse> {
+    try {
+      const userId = await this.getCurrentUserId();
+      
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({
+          task_type: taskType,
+          params: params,
+          user_id: userId
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to submit task');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error submitting task:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get status of a task
+   * @param taskId The ID of the task
+   * @returns Task status
+   */
+  async getTaskStatus(taskId: string): Promise<TaskStatusResponse> {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to get task status');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting task status:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Get all tasks for a user
+   * @param limit Maximum number of tasks to return
+   * @param offset Pagination offset
+   * @returns List of tasks
+   */
+  async getUserTasks(limit: number = 20, offset: number = 0): Promise<TaskListResponse> {
+    try {
+      const userId = await this.getCurrentUserId();
+      
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+      
+      const response = await fetch(`/api/users/${userId}/tasks?limit=${limit}&offset=${offset}`, {
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to get user tasks');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting user tasks:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Cancel a task
+   * @param taskId The ID of the task to cancel
+   * @returns Updated task status
+   */
+  async cancelTask(taskId: string): Promise<TaskStatusResponse> {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/cancel`, {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to cancel task');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error canceling task:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Poll for task status until it completes or fails
+   * @param taskId The ID of the task to poll
+   * @param interval Polling interval in milliseconds
+   * @param maxAttempts Maximum number of polling attempts
+   * @param callback Optional callback for status updates
+   * @returns Promise that resolves with the final task status
+   */
+  async pollTaskUntilCompletion(
+    taskId: string, 
+    interval: number = 1000, 
+    maxAttempts: number = 300,
+    callback?: (status: TaskStatusResponse) => void
+  ): Promise<TaskStatusResponse> {
+    return new Promise(async (resolve, reject) => {
+      let attempts = 0;
+      
+      const poll = async () => {
+        try {
+          const status = await this.getTaskStatus(taskId);
+          
+          // Call the callback with current status if provided
+          if (callback) {
+            callback(status);
+          }
+          
+          // Check if the task has completed or failed
+          if (status.status === TaskStatus.COMPLETED || 
+              status.status === TaskStatus.FAILED ||
+              status.status === TaskStatus.CANCELED) {
+            resolve(status);
+            return;
+          }
+          
+          // Check if we've reached the maximum number of attempts
+          attempts++;
+          if (attempts >= maxAttempts) {
+            reject(new Error(`Task polling timed out after ${maxAttempts} attempts`));
+            return;
+          }
+          
+          // Continue polling
+          setTimeout(poll, interval);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      // Start polling
+      poll();
+    });
   }
 
   /**
@@ -499,47 +718,95 @@ export class ApiService {
   }
 
   /**
+   * Get stress test results using the task system
+   * @param testId The ID of the test/task
+   * @returns Test results
+   */
+  async getStressTestResults(testId: string) {
+    try {
+      // First try to get the task status
+      const taskStatus = await this.getTaskStatus(testId);
+      
+      // If task is complete and has results, return them
+      if (taskStatus.result) {
+        return {
+          test_id: testId,
+          status: taskStatus.status,
+          results: taskStatus.result.results || {},
+          summary: taskStatus.result.summary || {},
+          config: taskStatus.result.config
+        };
+      }
+      
+      // If task is still running or doesn't have results, try the legacy endpoint
+      console.log('Task results not available, trying legacy endpoint');
+      const response = await fetch(`/api/stress-test/${testId}/results`, {
+        headers: await this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to get stress test results');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting stress test results:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop a running stress test using the task system
+   * @param testId The ID of the test/task to stop
+   * @returns Stop result
+   */
+  async stopStressTest(testId: string) {
+    try {
+      // Use the task cancel endpoint
+      return await this.cancelTask(testId);
+    } catch (error) {
+      console.error('Error stopping stress test:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get progress updates for a running stress test
    * @param testId The ID of the test to check
    * @returns Progress information including session acquisition status
    */
   async getTestProgress(testId: string) {
     try {
-      const response = await fetch(`/api/stress-test/${testId}/progress`, {
-        headers: await this.getAuthHeaders(),
-      });
+      // Try to get task status first
+      try {
+        const taskStatus = await this.getTaskStatus(testId);
+        
+        // Convert task status to progress format
+        return {
+          test_id: taskStatus.task_id,
+          status: taskStatus.status,
+          elapsed_time: 0, // Not directly available from task status
+          completed_requests: 0, // Not directly available from task status
+          progress: taskStatus.progress,
+          results_available: !!taskStatus.result,
+          current_operation: taskStatus.current_operation
+        };
+      } catch (e) {
+        // Fall back to legacy endpoint
+        const response = await fetch(`/api/stress-test/${testId}/progress`, {
+          headers: await this.getAuthHeaders(),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to get test progress');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to get test progress');
+        }
+
+        return await response.json();
       }
-
-      return await response.json();
     } catch (error) {
       console.error('Error getting test progress:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get detailed session acquisition status for a test
-   * @param testId The ID of the test to check
-   * @returns Session acquisition information
-   */
-  async getSessionStatus(testId: string) {
-    try {
-      const response = await fetch(`/api/stress-test/${testId}/session-status`, {
-        headers: await this.getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to get session acquisition status');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error getting session status:', error);
       throw error;
     }
   }
