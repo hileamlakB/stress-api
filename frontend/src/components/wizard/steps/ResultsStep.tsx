@@ -427,52 +427,83 @@ export function ResultsStep() {
               {/* Chart for the selected metric */}
               <div className="bg-gray-50 p-6 rounded-lg">
                 <h4 className="text-sm font-medium mb-4">{getTabName(activeTab)} vs Concurrency</h4>
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="concurrency" 
-                      label={{ value: 'Concurrency', position: 'insideBottom', offset: -5 }} 
-                    />
-                    <YAxis 
-                      label={{ value: getYAxisLabel(activeTab), angle: -90, position: 'insideLeft' }} 
-                      domain={getYAxisDomain(activeTab)}
-                    />
-                    <Tooltip 
-                      formatter={(value, name, props) => {
-                        // Extract endpoint name from the data key
-                        if (typeof name === 'string' && name.includes('_')) {
-                          const endpointKey = name.split('_')[0];
-                          const originalName = props.payload[`${endpointKey}_name`];
-                          return [formatMetricValue(value, activeTab), originalName || name];
-                        }
-                        return [value, name];
-                      }}
-                    />
-                    <Legend />
-                    
-                    {/* Generate a line for each endpoint */}
-                    {testResults?.summary?.concurrency_metrics && 
-                      Object.keys(testResults.summary.concurrency_metrics).map((endpoint, index) => {
-                        const safeEndpointName = endpoint.replace(/[^a-zA-Z0-9]/g, '_');
-                        const dataKey = `${safeEndpointName}_${activeTab}`;
-                        const color = endpointColors[index % endpointColors.length];
-                        
-                        return (
-                          <Line 
-                            key={endpoint}
-                            type="monotone" 
-                            dataKey={dataKey} 
-                            name={endpoint} 
-                            stroke={color}
-                            activeDot={{ r: 8 }}
-                            dot={{ strokeWidth: 2 }}
-                          />
-                        );
-                      })
-                    }
-                  </LineChart>
-                </ResponsiveContainer>
+                
+                <div className="relative">
+                  <ResponsiveContainer width="100%" height={400}>
+                    <LineChart 
+                      data={chartData}
+                      margin={{ top: 20, right: 150, left: 30, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="concurrency" 
+                        label={{ value: 'Concurrency', position: 'insideBottom', offset: -5 }} 
+                      />
+                      <YAxis 
+                        label={{ 
+                          value: getYAxisLabel(activeTab), 
+                          angle: -90, 
+                          position: 'insideLeft', 
+                          offset: -15,
+                          style: { textAnchor: 'middle' }
+                        }} 
+                        domain={getYAxisDomain(activeTab)}
+                      />
+                      <Tooltip 
+                        formatter={(value, name, props) => {
+                          // Extract endpoint name from the data key
+                          if (typeof name === 'string' && name.includes('_')) {
+                            const endpointKey = name.split('_')[0];
+                            const originalName = props.payload[`${endpointKey}_name`];
+                            return [formatMetricValue(value, activeTab), originalName || name];
+                          }
+                          return [value, name];
+                        }}
+                      />
+                      <Legend 
+                        layout="vertical" 
+                        verticalAlign="middle" 
+                        align="right"
+                        wrapperStyle={{ 
+                          paddingLeft: '20px',
+                          right: 0,
+                          borderLeft: '1px solid #d1d5db',
+                        }}
+                        formatter={(value, entry) => {
+                          // Truncate long endpoint names
+                          if (value.length > 25) {
+                            return <span title={value}>{value.substring(0, 22) + '...'}</span>
+                          }
+                          return <span title={value}>{value}</span>
+                        }}
+                        itemStyle={{ 
+                          marginBottom: '8px'
+                        }}
+                      />
+                      
+                      {/* Generate a line for each endpoint */}
+                      {testResults?.summary?.concurrency_metrics && 
+                        Object.keys(testResults.summary.concurrency_metrics).map((endpoint, index) => {
+                          const safeEndpointName = endpoint.replace(/[^a-zA-Z0-9]/g, '_');
+                          const dataKey = `${safeEndpointName}_${activeTab}`;
+                          const color = endpointColors[index % endpointColors.length];
+                          
+                          return (
+                            <Line 
+                              key={endpoint}
+                              type="monotone" 
+                              dataKey={dataKey} 
+                              name={endpoint} 
+                              stroke={color}
+                              activeDot={{ r: 8 }}
+                              dot={{ strokeWidth: 2 }}
+                            />
+                          );
+                        })
+                      }
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
           )}
