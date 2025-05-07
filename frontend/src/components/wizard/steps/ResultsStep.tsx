@@ -25,7 +25,6 @@ type ResultData = {
         min_response_time: number[];
         max_response_time: number[];
         success_rate: number[];
-        throughput: number[];
         total_requests: number[];
       }
     }
@@ -33,7 +32,7 @@ type ResultData = {
 };
 
 // Define tab types
-type MetricTab = 'avg_response_time' | 'min_response_time' | 'max_response_time' | 'success_rate' | 'throughput';
+type MetricTab = 'avg_response_time' | 'min_response_time' | 'max_response_time' | 'success_rate';
 
 // Colors for different endpoints
 const endpointColors = [
@@ -80,6 +79,30 @@ export function ResultsStep() {
         if (!isSubscribed) return;
         
         console.log('Test results fetched successfully:', activeTestId);
+        console.log('Status:', results.status);
+        console.log('Summary data:', results.summary);
+        
+        // Check if concurrency_metrics exists and has data
+        if (results.summary && results.summary.concurrency_metrics) {
+          console.log('Concurrency metrics endpoints:', Object.keys(results.summary.concurrency_metrics));
+          // Log a sample of the metrics for the first endpoint
+          const endpoints = Object.keys(results.summary.concurrency_metrics);
+          if (endpoints.length > 0) {
+            const sampleEndpoint = results.summary.concurrency_metrics[endpoints[0]];
+            console.log('Sample endpoint metrics:', {
+              endpoint: endpoints[0],
+              concurrency: sampleEndpoint.concurrency,
+              metrics: {
+                avg_response_time: sampleEndpoint.avg_response_time,
+                success_rate: sampleEndpoint.success_rate
+              }
+            });
+          } else {
+            console.warn('No endpoints in concurrency_metrics');
+          }
+        } else {
+          console.warn('No concurrency_metrics in results summary');
+        }
         
         // Check if we have any meaningful data
         const hasData = results && 
@@ -192,8 +215,6 @@ export function ResultsStep() {
         return 'ms';
       case 'success_rate':
         return '%';
-      case 'throughput':
-        return 'req/s';
       default:
         return '';
     }
@@ -210,8 +231,6 @@ export function ResultsStep() {
         return `${value.toFixed(2)} ms`;
       case 'success_rate':
         return `${value.toFixed(2)}%`;
-      case 'throughput':
-        return `${value.toFixed(2)} req/s`;
       default:
         return value.toString();
     }
@@ -228,8 +247,6 @@ export function ResultsStep() {
         return 'Max Response Time';
       case 'success_rate':
         return 'Success Rate';
-      case 'throughput':
-        return 'Throughput';
       default:
         return tab;
     }
@@ -256,8 +273,6 @@ export function ResultsStep() {
         return 'Max Response Time (ms)';
       case 'success_rate':
         return 'Success Rate (%)';
-      case 'throughput':
-        return 'Throughput (req/s)';
       default:
         return 'Value';
     }
@@ -394,7 +409,7 @@ export function ResultsStep() {
               
               {/* Tabs for different metrics */}
               <div className="flex border-b border-gray-200 mb-6">
-                {(['avg_response_time', 'min_response_time', 'max_response_time', 'success_rate', 'throughput'] as MetricTab[]).map((tab) => (
+                {(['avg_response_time', 'min_response_time', 'max_response_time', 'success_rate'] as MetricTab[]).map((tab) => (
                   <button
                     key={tab}
                     className={`py-2 px-4 text-sm font-medium ${

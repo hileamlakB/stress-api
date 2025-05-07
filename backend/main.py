@@ -846,6 +846,13 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             test_start_time = completed_data.get("start_time")
             test_end_time = completed_data.get("end_time")
             
+            # Fix data_strategy for endpoints in config if needed
+            if test_config and hasattr(test_config, "endpoints"):
+                for endpoint in test_config.endpoints:
+                    # If data_strategy is missing or None, set default value
+                    if not hasattr(endpoint, "data_strategy") or endpoint.data_strategy is None:
+                        endpoint.data_strategy = "consistent_random"
+            
             results_data = completed_data.get("results", {})
             raw_results = {}
             
@@ -887,7 +894,47 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             # Get summary directly from completed_data
             summary = completed_data.get("summary", {})
             
+            # Make sure concurrency_metrics is added to the summary if missing
+            if "concurrency_metrics" not in summary and raw_results:
+                # Create concurrency_metrics from raw_results
+                concurrency_metrics = {}
+                for endpoint_key, endpoint_results in raw_results.items():
+                    if endpoint_key not in concurrency_metrics:
+                        concurrency_metrics[endpoint_key] = {
+                            "concurrency": [],
+                            "avg_response_time": [],
+                            "min_response_time": [],
+                            "max_response_time": [],
+                            "success_rate": [],
+                            "throughput": [],
+                            "total_requests": []
+                        }
+                    
+                    for result in endpoint_results:
+                        concurrency = result.get("concurrent_requests", 0)
+                        concurrency_metrics[endpoint_key]["concurrency"].append(concurrency)
+                        
+                        # Calculate success rate as percentage
+                        total = result.get("success_count", 0) + result.get("failure_count", 0)
+                        success_rate = (result.get("success_count", 0) / total * 100) if total > 0 else 0
+                        
+                        # Calculate throughput (requests per second)
+                        avg_time_seconds = result.get("avg_response_time", 0) / 1000  # convert ms to seconds
+                        throughput = result.get("success_count", 0) / max(avg_time_seconds, 0.001) # avoid division by zero
+                        
+                        concurrency_metrics[endpoint_key]["avg_response_time"].append(result.get("avg_response_time", 0))
+                        concurrency_metrics[endpoint_key]["min_response_time"].append(result.get("min_response_time", 0))
+                        concurrency_metrics[endpoint_key]["max_response_time"].append(result.get("max_response_time", 0))
+                        concurrency_metrics[endpoint_key]["success_rate"].append(success_rate)
+                        concurrency_metrics[endpoint_key]["throughput"].append(throughput)
+                        concurrency_metrics[endpoint_key]["total_requests"].append(total)
+                
+                summary["concurrency_metrics"] = concurrency_metrics
+            
             logger.info(f"[RESULTS] Returning results from completed_test_results for test {test_id}")
+            logger.info(f"[RESULTS] Has concurrency_metrics: {'concurrency_metrics' in summary}")
+            logger.info(f"[RESULTS] Number of endpoints with metrics: {len(summary.get('concurrency_metrics', {}))}")
+            
             return StressTestResultsResponse(
                 test_id=test_id,
                 status=test_status,
@@ -905,6 +952,13 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
             test_config = test_progress.get(test_id, {}).get("config")
             test_start_time = test_progress.get(test_id, {}).get("start_time", datetime.now())
+            
+            # Fix data_strategy for endpoints in config if needed
+            if test_config and hasattr(test_config, "endpoints"):
+                for endpoint in test_config.endpoints:
+                    # If data_strategy is missing or None, set default value
+                    if not hasattr(endpoint, "data_strategy") or endpoint.data_strategy is None:
+                        endpoint.data_strategy = "consistent_random"
             
             # If test exists in test_progress but doesn't have results yet, return empty results
             # rather than a 404 error
@@ -980,7 +1034,7 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
                         
                         # Calculate throughput (requests per second)
                         avg_time_seconds = result.avg_response_time / 1000  # convert ms to seconds
-                        throughput = result.success_count / avg_time_seconds if avg_time_seconds > 0 else 0
+                        throughput = result.success_count / max(avg_time_seconds, 0.001) # avoid division by zero
                         
                         concurrency_metrics[endpoint]["avg_response_time"].append(result.avg_response_time)
                         concurrency_metrics[endpoint]["min_response_time"].append(result.min_response_time)
@@ -1040,6 +1094,9 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
                 end_time = datetime.now()
             
             logger.info(f"[RESULTS] Returning results for test {test_id}, status: {test_status}")
+            logger.info(f"[RESULTS] Has concurrency_metrics: {'concurrency_metrics' in summary}")
+            logger.info(f"[RESULTS] Number of endpoints with metrics: {len(summary.get('concurrency_metrics', {}))}")
+            
             return StressTestResultsResponse(
                 test_id=test_id,
                 status=test_status,
@@ -1059,6 +1116,24 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             # Create placeholder for status and other metadata
             test_status = TestStatus.RUNNING if test_id in stress_tester.active_tests else TestStatus.COMPLETED
             test_config = None  # We don't have config data in this case
+            
+            # Create basic config with default values if needed
+            if test_config is None:
+                test_config = StressTestConfig(
+                    target_url="http://example.com",
+                    strategy=DistributionStrategy.SEQUENTIAL,
+                    max_concurrent_users=10,
+                    request_rate=10,
+                    duration=60,
+                    endpoints=[
+                        StressTestEndpointConfig(
+                            path="/api/example",
+                            method="GET",
+                            data_strategy="consistent_random"
+                        )
+                    ]
+                )
+            
             test_start_time = datetime.now() - timedelta(minutes=30)  # Estimate start time
             
             # Process results for the response
@@ -1128,7 +1203,7 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
                         
                         # Calculate throughput (requests per second)
                         avg_time_seconds = result.avg_response_time / 1000  # convert ms to seconds
-                        throughput = result.success_count / avg_time_seconds if avg_time_seconds > 0 else 0
+                        throughput = result.success_count / max(avg_time_seconds, 0.001) # avoid division by zero
                         
                         concurrency_metrics[endpoint]["avg_response_time"].append(result.avg_response_time)
                         concurrency_metrics[endpoint]["min_response_time"].append(result.min_response_time)
@@ -1156,6 +1231,9 @@ async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db),
             end_time = datetime.now() if test_status == TestStatus.COMPLETED else None
             
             logger.info(f"[RESULTS] Returning fallback results for test {test_id}, status: {test_status}")
+            logger.info(f"[RESULTS] Has concurrency_metrics: {'concurrency_metrics' in summary}")
+            logger.info(f"[RESULTS] Number of endpoints with metrics: {len(summary.get('concurrency_metrics', {}))}")
+            
             return StressTestResultsResponse(
                 test_id=test_id,
                 status=test_status,

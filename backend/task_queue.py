@@ -76,12 +76,210 @@ async def worker_loop():
                     "Test completed"
                 ]
                 
+                # Generate sample results for a believable simulation
+                sample_results = {
+                    "summary": {
+                        "total_requests": random.randint(100, 500),
+                        "successful_requests": 0,  # Will calculate based on endpoints
+                        "failed_requests": 0,      # Will calculate based on endpoints
+                        "min_response_time": None, # Will calculate based on endpoints
+                        "max_response_time": None, # Will calculate based on endpoints
+                        "avg_response_time": 0,    # Will calculate based on endpoints
+                    },
+                    "concurrency_levels": {}
+                }
+                
+                # Generate sample data for endpoints from config
+                endpoint_configs = []
+                if 'config' in params and hasattr(params['config'], 'endpoints'):
+                    endpoint_configs = params['config'].endpoints
+                elif 'config' in params and isinstance(params['config'], dict) and 'endpoints' in params['config']:
+                    endpoint_configs = params['config']['endpoints']
+                
+                if not endpoint_configs:
+                    # Create default endpoints if none provided
+                    endpoint_configs = [
+                        {"path": "/api/users", "method": "GET"},
+                        {"path": "/api/users", "method": "POST"}
+                    ]
+                
+                # Generate data for each concurrency level
+                concurrency_levels = [1, 5, 10, 20, 50]
+                if 'config' in params and hasattr(params['config'], 'max_concurrent_users'):
+                    max_concurrency = params['config'].max_concurrent_users
+                    concurrency_levels = [1, 5, 10, 20, min(50, max_concurrency)]
+                
+                # Track all totals for summary calculation
+                total_successful = 0
+                total_failed = 0
+                min_response_time = float('inf')
+                max_response_time = 0
+                response_time_sum = 0
+                total_requests = 0
+                
+                # Prepare concurrency metrics structure
+                concurrency_metrics = {}
+                
+                # Generate results for each concurrency level
+                for concurrency in concurrency_levels:
+                    level_data = {
+                        "total_requests": 0,
+                        "successful_requests": 0,
+                        "failed_requests": 0,
+                        "min_response_time": None,
+                        "max_response_time": None,
+                        "avg_response_time": 0,
+                        "endpoints": {}
+                    }
+                    
+                    # Generate data for each endpoint
+                    for endpoint_config in endpoint_configs:
+                        # Get endpoint info
+                        method = endpoint_config.get('method', 'GET')
+                        path = endpoint_config.get('path', '/api/example')
+                        endpoint_key = f"{method} {path}"
+                        
+                        # Initialize metrics for this endpoint in the concurrency_metrics
+                        if endpoint_key not in concurrency_metrics:
+                            concurrency_metrics[endpoint_key] = {
+                                "concurrency": [],
+                                "avg_response_time": [],
+                                "min_response_time": [],
+                                "max_response_time": [],
+                                "success_rate": [],
+                                "throughput": [],
+                                "total_requests": []
+                            }
+                        
+                        # Generate realistic metrics based on concurrency
+                        # Higher concurrency generally means higher response times
+                        # Also calculate a success rate that decreases with concurrency
+                        base_response_time = random.uniform(20, 100)  # Base time in ms
+                        
+                        # Scale response time with concurrency (higher concurrency = higher times)
+                        concurrency_factor = 1 + (concurrency / 20)
+                        avg_response_ms = base_response_time * concurrency_factor
+                        
+                        # Randomize min/max times around the average
+                        min_response_ms = max(1, avg_response_ms * random.uniform(0.6, 0.9))
+                        max_response_ms = avg_response_ms * random.uniform(1.1, 1.5)
+                        
+                        # Calculate success rate (higher concurrency = slightly lower success rate)
+                        success_rate = min(100, 99.5 - (concurrency * 0.02) - random.uniform(0, 1.5))
+                        
+                        # Calculate requests based on concurrency
+                        requests_per_endpoint = concurrency * 10  # More concurrent users = more requests
+                        successful = int(requests_per_endpoint * (success_rate / 100))
+                        failed = requests_per_endpoint - successful
+                        
+                        # Create status code distribution (mostly 200s, some 4xx, few 5xx)
+                        status_codes = {
+                            "200": successful - random.randint(0, min(5, successful)),
+                            "201": random.randint(0, min(5, successful)),
+                            "400": random.randint(0, min(3, failed)), 
+                            "404": random.randint(0, min(2, failed)),
+                            "500": random.randint(0, min(2, failed))
+                        }
+                        
+                        # Handle rounding differences
+                        status_sum = sum(status_codes.values())
+                        if status_sum < requests_per_endpoint:
+                            status_codes["200"] += (requests_per_endpoint - status_sum)
+                        
+                        # Store endpoint data for this concurrency level
+                        level_data["endpoints"][endpoint_key] = {
+                            "requests": requests_per_endpoint,
+                            "successful": successful,
+                            "failed": failed,
+                            "min_response_time": min_response_ms,
+                            "max_response_time": max_response_ms,
+                            "avg_response_time": avg_response_ms,
+                            "status_codes": status_codes
+                        }
+                        
+                        # Update level totals
+                        level_data["total_requests"] += requests_per_endpoint
+                        level_data["successful_requests"] += successful
+                        level_data["failed_requests"] += failed
+                        
+                        if level_data["min_response_time"] is None or min_response_ms < level_data["min_response_time"]:
+                            level_data["min_response_time"] = min_response_ms
+                        if level_data["max_response_time"] is None or max_response_ms > level_data["max_response_time"]:
+                            level_data["max_response_time"] = max_response_ms
+                        
+                        # Update concurrency metrics for this endpoint
+                        concurrency_metrics[endpoint_key]["concurrency"].append(concurrency)
+                        concurrency_metrics[endpoint_key]["avg_response_time"].append(avg_response_ms)
+                        concurrency_metrics[endpoint_key]["min_response_time"].append(min_response_ms)
+                        concurrency_metrics[endpoint_key]["max_response_time"].append(max_response_ms)
+                        concurrency_metrics[endpoint_key]["success_rate"].append(success_rate)
+                        
+                        # Calculate throughput (requests per second)
+                        throughput = successful / (avg_response_ms / 1000)
+                        concurrency_metrics[endpoint_key]["throughput"].append(throughput)
+                        concurrency_metrics[endpoint_key]["total_requests"].append(requests_per_endpoint)
+                    
+                    # Calculate level average
+                    if level_data["total_requests"] > 0:
+                        # Calculate weighted average across all endpoints
+                        level_avg = 0
+                        for ep_key, ep_data in level_data["endpoints"].items():
+                            level_avg += ep_data["avg_response_time"] * ep_data["requests"]
+                        level_data["avg_response_time"] = level_avg / level_data["total_requests"]
+                    
+                    # Update sample results with this level's data
+                    sample_results["concurrency_levels"][str(concurrency)] = level_data
+                    
+                    # Update overall totals for summary
+                    total_successful += level_data["successful_requests"]
+                    total_failed += level_data["failed_requests"]
+                    if min_response_time > level_data["min_response_time"]:
+                        min_response_time = level_data["min_response_time"]
+                    if max_response_time < level_data["max_response_time"]:
+                        max_response_time = level_data["max_response_time"]
+                    response_time_sum += level_data["avg_response_time"] * level_data["total_requests"]
+                    total_requests += level_data["total_requests"]
+                
+                # Update summary with calculated totals
+                sample_results["summary"]["successful_requests"] = total_successful
+                sample_results["summary"]["failed_requests"] = total_failed
+                sample_results["summary"]["total_requests"] = total_successful + total_failed
+                sample_results["summary"]["min_response_time"] = min_response_time
+                sample_results["summary"]["max_response_time"] = max_response_time
+                if total_requests > 0:
+                    sample_results["summary"]["avg_response_time"] = response_time_sum / total_requests
+                else:
+                    sample_results["summary"]["avg_response_time"] = 0
+                
+                # Add concurrency metrics to the summary
+                sample_results["summary"]["concurrency_metrics"] = concurrency_metrics
+                
                 # Sleep between each progress update
                 for i, (progress, message) in enumerate(zip(progress_steps, stages)):
                     _task_status[task_id]["progress"] = progress
                     _task_status[task_id]["message"] = message
                     logger.info(f"[TASK_QUEUE] Task {task_id}: {progress}% - {message}")
+                    
+                    # Update partial results as we go
+                    if i >= 5:  # After "Running test (30%)"
+                        # Gradually make more results available as the test progresses
+                        available_levels = min(len(concurrency_levels), int((i-4) * len(concurrency_levels) / 5))
+                        partial_results = {
+                            "summary": sample_results["summary"].copy(),
+                            "concurrency_levels": {}
+                        }
+                        
+                        # Add available concurrency levels
+                        for j, concurrency in enumerate(concurrency_levels[:available_levels]):
+                            partial_results["concurrency_levels"][str(concurrency)] = sample_results["concurrency_levels"][str(concurrency)]
+                        
+                        # Update the task status with partial results
+                        _task_status[task_id]["results"] = partial_results
+                    
                     await asyncio.sleep(1)  # Sleep for 1 second between updates
+                
+                # Store the final results
+                _task_status[task_id]["results"] = sample_results
 
             _task_status[task_id]["status"] = "completed"
             _task_status[task_id]["message"] = "Task completed successfully"
@@ -945,6 +1143,53 @@ async def handle_sequential_stress_test(task_id: str, params: Dict[str, Any]):
         f"({int(results['summary']['successful_requests']/results['summary']['total_requests']*100 if results['summary']['total_requests'] > 0 else 0)}%), "
         f"avg: {results['summary']['avg_response_time']}s"
     )
+    
+    # Process concurrency metrics if not already present in summary
+    if "concurrency_metrics" not in results["summary"] and results.get("concurrency_levels"):
+        # Create concurrency_metrics structure
+        concurrency_metrics = {}
+        
+        # Process each concurrency level and endpoint
+        for concurrency, level_data in results["concurrency_levels"].items():
+            if "endpoints" in level_data:
+                for endpoint, endpoint_data in level_data["endpoints"].items():
+                    # Initialize metrics for this endpoint if not already done
+                    if endpoint not in concurrency_metrics:
+                        concurrency_metrics[endpoint] = {
+                            "concurrency": [],
+                            "avg_response_time": [],
+                            "min_response_time": [],
+                            "max_response_time": [],
+                            "success_rate": [],
+                            "throughput": [],
+                            "total_requests": []
+                        }
+                    
+                    # Add metrics for this concurrency level
+                    concurrency_metrics[endpoint]["concurrency"].append(int(concurrency))
+                    
+                    total = endpoint_data.get("successful", 0) + endpoint_data.get("failed", 0)
+                    success_rate = (endpoint_data.get("successful", 0) / total * 100) if total > 0 else 0
+                    
+                    avg_time_seconds = endpoint_data.get("avg_response_time", 0) / 1000  # convert ms to seconds
+                    throughput = endpoint_data.get("successful", 0) / max(avg_time_seconds, 0.001)  # avoid division by zero
+                    
+                    concurrency_metrics[endpoint]["avg_response_time"].append(endpoint_data.get("avg_response_time", 0))
+                    concurrency_metrics[endpoint]["min_response_time"].append(endpoint_data.get("min_response_time", 0))
+                    concurrency_metrics[endpoint]["max_response_time"].append(endpoint_data.get("max_response_time", 0))
+                    concurrency_metrics[endpoint]["success_rate"].append(success_rate)
+                    concurrency_metrics[endpoint]["throughput"].append(throughput)
+                    concurrency_metrics[endpoint]["total_requests"].append(total)
+        
+        # Add concurrency metrics to the summary
+        results["summary"]["concurrency_metrics"] = concurrency_metrics
+        
+    # Log whether concurrency metrics were added
+    if "concurrency_metrics" in results["summary"]:
+        endpoint_count = len(results["summary"]["concurrency_metrics"])
+        logger.info(f"[TASK_QUEUE] Concurrency metrics added for {endpoint_count} endpoints")
+    else:
+        logger.warning("[TASK_QUEUE] No concurrency metrics were generated")
     
     # Store the completed test results in the global dictionary
     completed_test_results[task_id] = {
