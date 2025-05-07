@@ -601,9 +601,15 @@ export function ReviewLaunchStep() {
         }
       }
 
+      // Prepare request body for the API
+      const requestBody = {
+        config: testConfig,
+        test_id: null // Let backend generate the ID
+      };
+
       // Call the actual API to start the stress test
-      const response = await apiService.startStressTest(testConfig);
-      const testId = response.test_id;
+      const data = await apiService.startStressTestTask(requestBody);
+      const testId = data.test_id;
       setCurrentTestId(testId);
       setActiveTestId(testId);
       

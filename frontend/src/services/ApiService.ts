@@ -86,6 +86,7 @@ export class ApiService {
    */
   async startStressTest(config: any) {
     try {
+      // Format the request body according to the model expected by the backend
       const response = await fetch(this.getApiUrl('/api/advanced-test'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
@@ -609,10 +610,16 @@ export class ApiService {
    */
   async startStressTestTask(config: any) {
     try {
+      // Format the request body according to the StressTestTaskRequest model expected by the backend
+      const requestBody = {
+        config: config.config || config,  // Use config.config if available, otherwise use the config directly
+        test_id: config.test_id || null   // Include test_id if provided
+      };
+
       const response = await fetch(this.getApiUrl('/api/stress-test/task'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
-        body: JSON.stringify({ config }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
