@@ -36,7 +36,7 @@ export class ApiService {
   /**
    * Get authentication headers for API requests
    */
-  private async getAuthHeaders(): Promise<HeadersInit> {
+  public async getAuthHeaders(): Promise<HeadersInit> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -598,6 +598,55 @@ export class ApiService {
       return await response.json();
     } catch (error) {
       console.error('Error generating fake data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start a stress test task
+   * @param config Test task configuration
+   * @returns Test ID and status
+   */
+  async startStressTestTask(config: any) {
+    try {
+      const response = await fetch(this.getApiUrl('/api/stress-test/task'), {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({ config }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to start stress test task');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error starting stress test task:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop a stress test
+   * @param testId The ID of the test to stop
+   * @returns Response with stop status
+   */
+  async stopStressTest(testId: string) {
+    try {
+      const response = await fetch(this.getApiUrl(`/api/stress-test/${testId}/stop`), {
+        method: 'POST',
+        headers: await this.getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to stop stress test');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error stopping stress test:', error);
       throw error;
     }
   }

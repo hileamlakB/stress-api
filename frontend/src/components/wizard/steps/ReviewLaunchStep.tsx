@@ -413,22 +413,9 @@ export function ReviewLaunchStep() {
         test_id: null // Let backend generate the ID
       };
       
-      // Make the API call
-      const response = await fetch('/api/stress-test/task', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('supabaseToken') || ''}`
-        },
-        body: JSON.stringify(requestBody)
-      });
+      // Use our ApiService instead of direct fetch
+      const data = await apiService.startStressTestTask(requestBody);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to start stress test');
-      }
-      
-      const data = await response.json();
       console.log('Stress test started:', data);
       
       // Update UI to show test is running
