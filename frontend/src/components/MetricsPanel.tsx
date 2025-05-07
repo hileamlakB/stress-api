@@ -28,9 +28,10 @@ const chartTypes = [
 
 interface MetricsPanelProps {
   testId: string;
+  preloadedResults?: any; // Add prop for preloaded results
 }
 
-export function MetricsPanel({ testId }: MetricsPanelProps) {
+export function MetricsPanel({ testId, preloadedResults }: MetricsPanelProps) {
   const [currentChartIndex, setCurrentChartIndex] = useState(0);
   const [selectedEndpoint, setSelectedEndpoint] = useState<string | null>(null);
   const [summary, setSummary] = useState<TestSummary>({
@@ -48,45 +49,51 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
         setIsLoading(true);
         setError(null);
         
-        // Fetch test results from API
-        const results = await fetchTestResults(testId);
+        // Use preloaded results if available, otherwise fetch from API
+        const results = preloadedResults || await fetchTestResults(testId);
+        
+        // Extract endpoints from concurrency_metrics
+        const endpoints = results.summary?.concurrency_metrics 
+          ? Object.keys(results.summary.concurrency_metrics) 
+          : [];
+        
+        // Extract max concurrency from the first endpoint if available
+        const maxConcurrency = endpoints.length > 0 && results.summary?.concurrency_metrics
+          ? Math.max(...results.summary.concurrency_metrics[endpoints[0]].concurrency)
+          : 0;
         
         // Transform results into the format expected by the component
         const transformedSummary: TestSummary = {
           totalRequests: results.summary?.total_requests || 0,
-          activeEndpoints: Object.keys(results.endpoints || {}),
-          peakConcurrentRequests: Number(Object.keys(results.concurrency_levels || {}).pop() || 0),
+          activeEndpoints: endpoints,
+          peakConcurrentRequests: maxConcurrency,
           detailedMetrics: []
         };
         
-        // Transform endpoint metrics for each concurrency level
-        if (results.concurrency_levels) {
+        // Transform endpoint metrics from concurrency_metrics
+        if (results.summary?.concurrency_metrics) {
           const detailedMetrics: DetailedEndpointMetric[] = [];
           
-          // Process each concurrency level
-          Object.entries(results.concurrency_levels).forEach(([concurrencyLevel, levelData]) => {
-            const concurrency = parseInt(concurrencyLevel);
-            
-            // Process each endpoint at this concurrency level
-            if (levelData.endpoints) {
-              Object.entries(levelData.endpoints).forEach(([endpoint, epData]) => {
-                detailedMetrics.push({
-                  endpoint,
-                  concurrentRequests: concurrency,
-                  successCount: epData.successful || 0,
-                  failureCount: epData.failed || 0,
-                  successRate: epData.successful / epData.requests,
-                  responseTime: {
-                    avg: epData.avg_response_time || 0,
-                    min: epData.min_response_time || 0,
-                    max: epData.max_response_time || 0
-                  },
-                  statusCodes: epData.status_codes || {},
-                  timestamp: new Date().toISOString(),
-                  errorMessage: null
-                });
+          // Process each endpoint
+          Object.entries(results.summary.concurrency_metrics).forEach(([endpoint, metrics]: [string, any]) => {
+            // Process each concurrency level for this endpoint
+            metrics.concurrency.forEach((concurrency: number, index: number) => {
+              detailedMetrics.push({
+                endpoint,
+                concurrentRequests: concurrency,
+                successCount: metrics.success_rate[index] * metrics.total_requests[index] / 100, // Convert from percentage
+                failureCount: metrics.total_requests[index] - (metrics.success_rate[index] * metrics.total_requests[index] / 100),
+                successRate: metrics.success_rate[index] / 100, // Convert from percentage to decimal
+                responseTime: {
+                  avg: metrics.avg_response_time[index],
+                  min: metrics.min_response_time[index],
+                  max: metrics.max_response_time[index]
+                },
+                statusCodes: {}, // Status codes per concurrency not available in the new format
+                timestamp: new Date().toISOString(),
+                errorMessage: null
               });
-            }
+            });
           });
           
           transformedSummary.detailedMetrics = detailedMetrics;
@@ -100,7 +107,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
         }
         
         setIsLoading(false);
-        console.log('Test results loaded:', transformedSummary);
+        console.log('Test results processed for metrics panel:', transformedSummary);
       } catch (error) {
         console.error('Error loading test results:', error);
         setError('Failed to load test results. Please try again.');
@@ -109,25 +116,34 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
     }
     
     loadTestResults();
-  }, [testId, selectedEndpoint]);
+  }, [testId, preloadedResults, selectedEndpoint]);
 
   const currentChart = chartTypes[currentChartIndex];
   
-  // Get selected endpoint metrics
-  const selectedEndpointMetrics = summary.detailedMetrics?.find(
+  // Get all metrics for the selected endpoint
+  const selectedEndpointMetrics = summary.detailedMetrics?.filter(
     metric => metric.endpoint === selectedEndpoint
   );
+  
+  // Get the latest (highest concurrency) metric for the selected endpoint
+  const latestEndpointMetric = selectedEndpointMetrics && selectedEndpointMetrics.length > 0
+    ? selectedEndpointMetrics.reduce((latest, current) => 
+        current.concurrentRequests > latest.concurrentRequests ? current : latest
+      )
+    : null;
 
   // Calculate overall success rate
   const overallSuccessRate = summary.detailedMetrics && summary.detailedMetrics.length > 0
     ? summary.detailedMetrics.reduce((acc, metric) => acc + (metric.successCount || 0), 0) / 
-      summary.detailedMetrics.reduce((acc, metric) => acc + (metric.concurrentRequests || 0), 0) * 100 || 0
+      summary.detailedMetrics.reduce((acc, metric) => acc + ((metric.successCount || 0) + (metric.failureCount || 0)), 0) * 100
     : 0;
 
-  // Calculate overall average response time
+  // Calculate overall average response time - weight by request count
   const overallAvgResponseTime = summary.detailedMetrics && summary.detailedMetrics.length > 0
-    ? summary.detailedMetrics.reduce((acc, metric) => acc + (metric.responseTime?.avg || 0), 0) / 
-      summary.detailedMetrics.length || 0
+    ? summary.detailedMetrics.reduce((acc, metric) => 
+        acc + (metric.responseTime?.avg || 0) * ((metric.successCount || 0) + (metric.failureCount || 0)), 0) / 
+      summary.detailedMetrics.reduce((acc, metric) => 
+        acc + ((metric.successCount || 0) + (metric.failureCount || 0)), 0)
     : 0;
 
   if (isLoading) {
@@ -202,7 +218,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
             </div>
           </div>
           
-          {selectedEndpointMetrics && (
+          {latestEndpointMetric && (
             <div className="p-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 {/* Success/Failure */}
@@ -211,16 +227,16 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
                   <div className="flex items-end">
                     <div 
                       className="h-8 rounded-l bg-green-500" 
-                      style={{ width: `${(selectedEndpointMetrics.successRate || 0) * 100}%` }} 
+                      style={{ width: `${(latestEndpointMetric.successRate || 0) * 100}%` }} 
                     ></div>
                     <div 
                       className="h-8 rounded-r bg-red-500" 
-                      style={{ width: `${100 - (selectedEndpointMetrics.successRate || 0) * 100}%` }} 
+                      style={{ width: `${100 - (latestEndpointMetric.successRate || 0) * 100}%` }} 
                     ></div>
                   </div>
                   <div className="flex justify-between mt-1 text-xs text-gray-500">
-                    <span>{selectedEndpointMetrics.successCount || 0} successful ({((selectedEndpointMetrics.successRate || 0) * 100).toFixed(1)}%)</span>
-                    <span>{selectedEndpointMetrics.failureCount || 0} failed</span>
+                    <span>{Math.round(latestEndpointMetric.successCount || 0)} successful ({((latestEndpointMetric.successRate || 0) * 100).toFixed(1)}%)</span>
+                    <span>{Math.round(latestEndpointMetric.failureCount || 0)} failed</span>
                   </div>
                 </div>
                 
@@ -230,38 +246,30 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Average:</span>
-                      <span className="text-xs font-medium">{(selectedEndpointMetrics.responseTime?.avg || 0).toFixed(2)} ms</span>
+                      <span className="text-xs font-medium">{(latestEndpointMetric.responseTime?.avg || 0).toFixed(2)} ms</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Minimum:</span>
-                      <span className="text-xs font-medium">{(selectedEndpointMetrics.responseTime?.min || 0).toFixed(2)} ms</span>
+                      <span className="text-xs font-medium">{(latestEndpointMetric.responseTime?.min || 0).toFixed(2)} ms</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-xs text-gray-500">Maximum:</span>
-                      <span className="text-xs font-medium">{(selectedEndpointMetrics.responseTime?.max || 0).toFixed(2)} ms</span>
+                      <span className="text-xs font-medium">{(latestEndpointMetric.responseTime?.max || 0).toFixed(2)} ms</span>
                     </div>
                   </div>
                 </div>
                 
-                {/* Status Codes */}
+                {/* Concurrency Info */}
                 <div className="bg-gray-50 rounded p-4">
-                  <h4 className="text-sm font-medium text-gray-500 mb-2">Status Codes</h4>
-                  <div className="space-y-1 max-h-28 overflow-y-auto">
-                    {Object.entries(selectedEndpointMetrics.statusCodes || {}).map(([code, count]) => (
-                      <div key={code} className="flex justify-between">
-                        <span className={`text-xs ${parseInt(code) < 400 ? 'text-green-600' : 'text-red-600'}`}>
-                          {code}:
-                        </span>
-                        <span className="text-xs font-medium">{count}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <h4 className="text-sm font-medium text-gray-500 mb-2">Max Concurrency</h4>
+                  <p className="text-2xl font-semibold">{latestEndpointMetric.concurrentRequests}</p>
+                  <p className="text-xs text-gray-500 mt-2">Simulated users at peak load</p>
                 </div>
               </div>
               
-              {selectedEndpointMetrics.errorMessage && (
+              {latestEndpointMetric.errorMessage && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded p-3 text-sm">
-                  <span className="font-medium">Error:</span> {selectedEndpointMetrics.errorMessage}
+                  <span className="font-medium">Error:</span> {latestEndpointMetric.errorMessage}
                 </div>
               )}
             </div>
@@ -294,6 +302,7 @@ export function MetricsPanel({ testId }: MetricsPanelProps) {
           title={currentChart.title}
           key={currentChart.type}
           detailedMetrics={summary.detailedMetrics}
+          preloadedResults={preloadedResults}
         />
       </div>
     </div>

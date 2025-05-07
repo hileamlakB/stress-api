@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depe
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import httpx
 import asyncio
 import logging
@@ -93,7 +93,10 @@ from sqlalchemy.orm import Session
 from backend.config.settings import CORS_ORIGINS  # Keep this, but remove USER_SYNC_INTERVAL_HOURS
 
 # Import our new stress test API router
-from stresstestapis import router as stress_test_router
+from stresstestapis import router as stress_test_router, test_progress
+
+# Import the completed_test_results dictionary from task_queue
+from task_queue import completed_test_results
 
 # Add this new import and dependency function
 from backend.services.supabase_service import supabase_service
@@ -611,64 +614,6 @@ async def start_test(config: TestConfigRequest, db: Session = Depends(get_db), _
             detail=f"Error starting test: {str(e)}"
         )
 
-# Endpoint to get test results
-@app.get("/api/test/{test_id}/results", response_model=TestResultsResponse)
-async def get_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
-    try:
-        if test_id not in stress_tester.results:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Test with ID {test_id} not found"
-            )
-        
-        results = stress_tester.results[test_id]
-        test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
-        
-        # Get summary statistics
-        summary = get_test_summary(test_id)
-        
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Update the test result with the latest data
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=test_status.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=results,
-                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
-        return TestResultsResponse(
-            test_id=test_id,
-            status=test_status,
-            results=results,
-            summary=summary
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting test results: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error getting test results: {str(e)}"
-        )
-
 # Endpoint to stop ongoing test
 @app.post("/api/test/{test_id}/stop", response_model=TestStopResponse)
 async def stop_test(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
@@ -883,92 +828,352 @@ async def start_advanced_test(config: StressTestConfig, db: Session = Depends(ge
 @app.get("/api/stress-test/{test_id}/results", response_model=StressTestResultsResponse)
 async def get_advanced_test_results(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
-        if test_id not in stress_tester.results:
+        logger.info(f"[RESULTS] Request for test results with ID: {test_id}")
+        logger.info(f"[RESULTS] test_progress contains {len(test_progress)} items")
+        logger.info(f"[RESULTS] Is test_id in test_progress? {test_id in test_progress}")
+        logger.info(f"[RESULTS] Is test_id in completed_test_results? {test_id in completed_test_results}")
+        logger.info(f"[RESULTS] Is test_id in stress_tester results? {test_id in stress_tester.results}")
+        logger.info(f"[RESULTS] Is test_id in stress_tester active_tests? {test_id in stress_tester.active_tests}")
+        
+        # First check if results exist in completed_test_results (highest priority)
+        if test_id in completed_test_results:
+            logger.info(f"[RESULTS] Found test in completed_test_results")
+            completed_data = completed_test_results[test_id]
+            
+            # Extract the necessary data from completed results
+            test_status = TestStatus(completed_data.get("status", "completed"))
+            test_config = completed_data.get("config")
+            test_start_time = completed_data.get("start_time")
+            test_end_time = completed_data.get("end_time")
+            
+            results_data = completed_data.get("results", {})
+            raw_results = {}
+            
+            # If results data contains concurrency metrics, transform it to the expected format
+            if "concurrency_levels" in results_data:
+                for concurrency, level_data in results_data["concurrency_levels"].items():
+                    if "endpoints" in level_data:
+                        for endpoint, endpoint_data in level_data["endpoints"].items():
+                            if endpoint not in raw_results:
+                                raw_results[endpoint] = []
+                            
+                            raw_results[endpoint].append({
+                                "concurrent_requests": int(concurrency),
+                                "success_count": endpoint_data.get("successful", 0),
+                                "failure_count": endpoint_data.get("failed", 0),
+                                "avg_response_time": endpoint_data.get("avg_response_time", 0),
+                                "min_response_time": endpoint_data.get("min_response_time", 0),
+                                "max_response_time": endpoint_data.get("max_response_time", 0),
+                                "status_codes": endpoint_data.get("status_codes", {})
+                            })
+            
+            # Process results for the response
+            results = []
+            for endpoint_key, endpoint_results in raw_results.items():
+                for result in endpoint_results:
+                    results.append(EndpointResult(
+                        endpoint=endpoint_key,
+                        concurrent_requests=result.get("concurrent_requests", 0),
+                        success_count=result.get("success_count", 0),
+                        failure_count=result.get("failure_count", 0),
+                        avg_response_time=result.get("avg_response_time", 0),
+                        min_response_time=result.get("min_response_time", 0),
+                        max_response_time=result.get("max_response_time", 0),
+                        status_codes=result.get("status_codes", {}),
+                        timestamp=datetime.now(),
+                        error_message=result.get("error_message")
+                    ))
+            
+            # Get summary directly from completed_data
+            summary = completed_data.get("summary", {})
+            
+            logger.info(f"[RESULTS] Returning results from completed_test_results for test {test_id}")
+            return StressTestResultsResponse(
+                test_id=test_id,
+                status=test_status,
+                config=test_config,
+                start_time=test_start_time,
+                end_time=test_end_time,
+                results=results,
+                summary=summary
+            )
+        
+        # Otherwise check test_progress (as before)
+        elif test_id in test_progress:
+            logger.info(f"[RESULTS] Found test in test_progress")
+            # Get test status and configuration from progress tracking
+            test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
+            test_config = test_progress.get(test_id, {}).get("config")
+            test_start_time = test_progress.get(test_id, {}).get("start_time", datetime.now())
+            
+            # If test exists in test_progress but doesn't have results yet, return empty results
+            # rather than a 404 error
+            raw_results = stress_tester.results.get(test_id, {})
+            logger.info(f"[RESULTS] Raw results found: {bool(raw_results)}")
+            
+            # Process results for the response
+            results = []
+            if raw_results:
+                logger.info(f"[RESULTS] Processing raw results")
+                # Extract and process results for each endpoint
+                for endpoint_key, endpoint_results in raw_results.items():
+                    for result in endpoint_results:
+                        results.append(EndpointResult(
+                            endpoint=endpoint_key,
+                            concurrent_requests=result.get("concurrent_requests", 0),
+                            success_count=result.get("success_count", 0),
+                            failure_count=result.get("failure_count", 0),
+                            avg_response_time=result.get("avg_response_time", 0),
+                            min_response_time=result.get("min_response_time", 0),
+                            max_response_time=result.get("max_response_time", 0),
+                            status_codes=result.get("status_codes", {}),
+                            timestamp=datetime.now(),
+                            error_message=result.get("error_message")
+                        ))
+            
+            # Calculate summary statistics from actual results
+            if results:
+                logger.info(f"[RESULTS] Calculating summary stats from {len(results)} result items")
+                summary = {
+                    "total_requests": sum(r.success_count + r.failure_count for r in results),
+                    "successful_requests": sum(r.success_count for r in results),
+                    "failed_requests": sum(r.failure_count for r in results),
+                    "avg_response_time": sum(r.avg_response_time * (r.success_count + r.failure_count) 
+                                            for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
+                    "min_response_time": min((r.min_response_time for r in results), default=0),
+                    "max_response_time": max((r.max_response_time for r in results), default=0),
+                    "status_codes": {}
+                }
+                
+                # Combine status codes from all results
+                for result in results:
+                    for status_code, count in result.status_codes.items():
+                        if status_code in summary["status_codes"]:
+                            summary["status_codes"][status_code] += count
+                        else:
+                            summary["status_codes"][status_code] = count
+                            
+                # Process data for concurrency metrics
+                concurrency_metrics = {}
+                for result in results:
+                    endpoint = result.endpoint
+                    concurrency = result.concurrent_requests
+                    
+                    if endpoint not in concurrency_metrics:
+                        concurrency_metrics[endpoint] = {
+                            "concurrency": [],
+                            "avg_response_time": [],
+                            "min_response_time": [],
+                            "max_response_time": [],
+                            "success_rate": [],
+                            "throughput": [],
+                            "total_requests": []
+                        }
+                    
+                    # Add metrics for this concurrency level if not already present
+                    if concurrency not in concurrency_metrics[endpoint]["concurrency"]:
+                        concurrency_metrics[endpoint]["concurrency"].append(concurrency)
+                        
+                        # Calculate success rate as percentage
+                        total = result.success_count + result.failure_count
+                        success_rate = (result.success_count / total * 100) if total > 0 else 0
+                        
+                        # Calculate throughput (requests per second)
+                        avg_time_seconds = result.avg_response_time / 1000  # convert ms to seconds
+                        throughput = result.success_count / avg_time_seconds if avg_time_seconds > 0 else 0
+                        
+                        concurrency_metrics[endpoint]["avg_response_time"].append(result.avg_response_time)
+                        concurrency_metrics[endpoint]["min_response_time"].append(result.min_response_time)
+                        concurrency_metrics[endpoint]["max_response_time"].append(result.max_response_time)
+                        concurrency_metrics[endpoint]["success_rate"].append(success_rate)
+                        concurrency_metrics[endpoint]["throughput"].append(throughput)
+                        concurrency_metrics[endpoint]["total_requests"].append(total)
+                
+                # Add concurrency metrics to summary
+                summary["concurrency_metrics"] = concurrency_metrics
+            else:
+                logger.info(f"[RESULTS] No results, returning empty summary")
+                # If no results yet, return empty summary
+                summary = {
+                    "total_requests": 0,
+                    "successful_requests": 0,
+                    "failed_requests": 0,
+                    "avg_response_time": 0,
+                    "min_response_time": 0,
+                    "max_response_time": 0,
+                    "status_codes": {},
+                    "concurrency_metrics": {}
+                }
+            
+            # Update test result in the database if we have a session configuration
+            session_config_id = test_progress.get(test_id, {}).get("session_config_id")
+            if session_config_id:
+                try:
+                    logger.info(f"[RESULTS] Found session_config_id: {session_config_id}")
+                    config_id = uuid.UUID(session_config_id)
+                    test_result = get_test_result_by_test_id(db, test_id)
+                    
+                    if test_result:
+                        logger.info(f"[RESULTS] Updating test result in database for ID: {test_id}")
+                        # Update the test result with the latest data
+                        update_test_result(
+                            db,
+                            result_id=test_result.id,
+                            status=test_status.value,
+                            total_requests=summary.get("total_requests", 0),
+                            successful_requests=summary.get("successful_requests", 0),
+                            failed_requests=summary.get("failed_requests", 0),
+                            avg_response_time=summary.get("avg_response_time"),
+                            min_response_time=summary.get("min_response_time"),
+                            max_response_time=summary.get("max_response_time"),
+                            status_codes=summary.get("status_codes"),
+                            summary=summary,
+                            results_data=raw_results,
+                            end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not update test result in database: {str(e)}")
+            
+            # Set test end time if test has completed
+            end_time = None
+            if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED]:
+                end_time = datetime.now()
+            
+            logger.info(f"[RESULTS] Returning results for test {test_id}, status: {test_status}")
+            return StressTestResultsResponse(
+                test_id=test_id,
+                status=test_status,
+                config=test_config,
+                start_time=test_start_time,
+                end_time=end_time,
+                results=results,
+                summary=summary
+            )
+        
+        # Finally check stress_tester's tracking
+        elif test_id in stress_tester.results or test_id in stress_tester.active_tests:
+            logger.info(f"[RESULTS] Test found in stress_tester but not in test_progress, using fallback")
+            # Get actual results from the stress tester
+            raw_results = stress_tester.results.get(test_id, {})
+            
+            # Create placeholder for status and other metadata
+            test_status = TestStatus.RUNNING if test_id in stress_tester.active_tests else TestStatus.COMPLETED
+            test_config = None  # We don't have config data in this case
+            test_start_time = datetime.now() - timedelta(minutes=30)  # Estimate start time
+            
+            # Process results for the response
+            results = []
+            if raw_results:
+                # Extract and process results for each endpoint
+                for endpoint_key, endpoint_results in raw_results.items():
+                    for result in endpoint_results:
+                        results.append(EndpointResult(
+                            endpoint=endpoint_key,
+                            concurrent_requests=result.get("concurrent_requests", 0),
+                            success_count=result.get("success_count", 0),
+                            failure_count=result.get("failure_count", 0),
+                            avg_response_time=result.get("avg_response_time", 0),
+                            min_response_time=result.get("min_response_time", 0),
+                            max_response_time=result.get("max_response_time", 0),
+                            status_codes=result.get("status_codes", {}),
+                            timestamp=datetime.now(),
+                            error_message=result.get("error_message")
+                        ))
+            
+            # Calculate summary statistics from actual results
+            if results:
+                summary = {
+                    "total_requests": sum(r.success_count + r.failure_count for r in results),
+                    "successful_requests": sum(r.success_count for r in results),
+                    "failed_requests": sum(r.failure_count for r in results),
+                    "avg_response_time": sum(r.avg_response_time * (r.success_count + r.failure_count) 
+                                        for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
+                    "min_response_time": min((r.min_response_time for r in results), default=0),
+                    "max_response_time": max((r.max_response_time for r in results), default=0),
+                    "status_codes": {}
+                }
+                
+                # Combine status codes from all results
+                for result in results:
+                    for status_code, count in result.status_codes.items():
+                        if status_code in summary["status_codes"]:
+                            summary["status_codes"][status_code] += count
+                        else:
+                            summary["status_codes"][status_code] = count
+                            
+                # Process data for concurrency metrics
+                concurrency_metrics = {}
+                for result in results:
+                    endpoint = result.endpoint
+                    concurrency = result.concurrent_requests
+                    
+                    if endpoint not in concurrency_metrics:
+                        concurrency_metrics[endpoint] = {
+                            "concurrency": [],
+                            "avg_response_time": [],
+                            "min_response_time": [],
+                            "max_response_time": [],
+                            "success_rate": [],
+                            "throughput": [],
+                            "total_requests": []
+                        }
+                    
+                    # Add metrics for this concurrency level if not already present
+                    if concurrency not in concurrency_metrics[endpoint]["concurrency"]:
+                        concurrency_metrics[endpoint]["concurrency"].append(concurrency)
+                        
+                        # Calculate success rate as percentage
+                        total = result.success_count + result.failure_count
+                        success_rate = (result.success_count / total * 100) if total > 0 else 0
+                        
+                        # Calculate throughput (requests per second)
+                        avg_time_seconds = result.avg_response_time / 1000  # convert ms to seconds
+                        throughput = result.success_count / avg_time_seconds if avg_time_seconds > 0 else 0
+                        
+                        concurrency_metrics[endpoint]["avg_response_time"].append(result.avg_response_time)
+                        concurrency_metrics[endpoint]["min_response_time"].append(result.min_response_time)
+                        concurrency_metrics[endpoint]["max_response_time"].append(result.max_response_time)
+                        concurrency_metrics[endpoint]["success_rate"].append(success_rate)
+                        concurrency_metrics[endpoint]["throughput"].append(throughput)
+                        concurrency_metrics[endpoint]["total_requests"].append(total)
+                
+                # Add concurrency metrics to summary
+                summary["concurrency_metrics"] = concurrency_metrics
+            else:
+                # If no results yet, return empty summary
+                summary = {
+                    "total_requests": 0,
+                    "successful_requests": 0,
+                    "failed_requests": 0,
+                    "avg_response_time": 0,
+                    "min_response_time": 0,
+                    "max_response_time": 0,
+                    "status_codes": {},
+                    "concurrency_metrics": {}
+                }
+            
+            # Set test end time if test has completed
+            end_time = datetime.now() if test_status == TestStatus.COMPLETED else None
+            
+            logger.info(f"[RESULTS] Returning fallback results for test {test_id}, status: {test_status}")
+            return StressTestResultsResponse(
+                test_id=test_id,
+                status=test_status,
+                config=test_config,
+                start_time=test_start_time,
+                end_time=end_time,
+                results=results,
+                summary=summary
+            )
+            
+        else:
+            # If not found anywhere, return 404
+            logger.warning(f"[RESULTS] Test with ID {test_id} not found anywhere")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Test with ID {test_id} not found"
             )
-        
-        results = []
-        raw_results = stress_tester.results.get(test_id, {})
-        
-        # Process results for each endpoint
-        for endpoint_key, endpoint_results in raw_results.items():
-            for result in endpoint_results:
-                results.append(EndpointResult(
-                    endpoint=endpoint_key,
-                    concurrent_requests=result.get("concurrent_requests", 0),
-                    success_count=result.get("success_count", 0),
-                    failure_count=result.get("failure_count", 0),
-                    avg_response_time=result.get("avg_response_time", 0),
-                    min_response_time=result.get("min_response_time", 0),
-                    max_response_time=result.get("max_response_time", 0),
-                    status_codes=result.get("status_codes", {}),
-                    timestamp=datetime.now(),
-                    error_message=result.get("error_message")
-                ))
-        
-        # Get test status and configuration
-        test_status = test_progress.get(test_id, {}).get("status", TestStatus.PENDING)
-        test_config = test_progress.get(test_id, {}).get("config")
-        test_start_time = test_progress.get(test_id, {}).get("start_time", datetime.now())
-        
-        # Calculate summary statistics
-        summary = {
-            "total_requests": sum(r.success_count + r.failure_count for r in results),
-            "successful_requests": sum(r.success_count for r in results),
-            "failed_requests": sum(r.failure_count for r in results),
-            "avg_response_time": sum(r.avg_response_time * (r.success_count + r.failure_count) 
-                                    for r in results) / max(1, sum(r.success_count + r.failure_count for r in results)),
-            "min_response_time": min((r.min_response_time for r in results), default=0),
-            "max_response_time": max((r.max_response_time for r in results), default=0),
-            "status_codes": {}
-        }
-        
-        # Combine status codes from all results
-        for result in results:
-            for status_code, count in result.status_codes.items():
-                if status_code in summary["status_codes"]:
-                    summary["status_codes"][status_code] += count
-                else:
-                    summary["status_codes"][status_code] = count
-        
-        # Update test result in the database if we have a session configuration
-        session_config_id = test_progress.get(test_id, {}).get("session_config_id")
-        if session_config_id:
-            try:
-                config_id = uuid.UUID(session_config_id)
-                test_result = get_test_result_by_test_id(db, test_id)
-                
-                if test_result:
-                    # Update the test result with the latest data
-                    update_test_result(
-                        db,
-                        result_id=test_result.id,
-                        status=test_status.value,
-                        total_requests=summary.get("total_requests", 0),
-                        successful_requests=summary.get("successful_requests", 0),
-                        failed_requests=summary.get("failed_requests", 0),
-                        avg_response_time=summary.get("avg_response_time"),
-                        min_response_time=summary.get("min_response_time"),
-                        max_response_time=summary.get("max_response_time"),
-                        status_codes=summary.get("status_codes"),
-                        summary=summary,
-                        results_data=raw_results,
-                        end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None
-                    )
-            except Exception as e:
-                logger.warning(f"Could not update test result in database: {str(e)}")
-        
-        return StressTestResultsResponse(
-            test_id=test_id,
-            status=test_status,
-            config=test_config,
-            start_time=test_start_time,
-            end_time=datetime.now() if test_status in [TestStatus.COMPLETED, TestStatus.FAILED, TestStatus.STOPPED] else None,
-            results=results,
-            summary=summary
-        )
+            
     except HTTPException:
         raise
     except Exception as e:
@@ -1562,16 +1767,23 @@ async def update_session_configuration(
 @app.get("/api/stress-test/{test_id}/progress", response_model=StressTestProgressResponse)
 async def get_advanced_test_progress(test_id: str, db: Session = Depends(get_db), _: None = Depends(verify_email_confirmed)):
     try:
+        logger.info(f"[PROGRESS] Request for test progress with ID: {test_id}")
+        logger.info(f"[PROGRESS] test_progress contains {len(test_progress)} items")
+        logger.info(f"[PROGRESS] Is test_id in test_progress? {test_id in test_progress}")
+        
         progress = stress_tester.get_test_progress(test_id)
+        logger.info(f"[PROGRESS] Progress from stress_tester: {progress}")
         
         # Get authentication sessions if available
         auth_sessions = None
         if test_id in test_progress:
+            logger.info(f"[PROGRESS] Test found in test_progress")
             session_data = stress_tester.get_session_status(test_id)
             if session_data and session_data.get("acquired_sessions"):
                 auth_sessions = session_data.get("acquired_sessions")
+                logger.info(f"[PROGRESS] Found {len(auth_sessions)} auth sessions")
                 
-        return StressTestProgressResponse(
+        response = StressTestProgressResponse(
             test_id=progress["test_id"],
             status=progress["status"],
             elapsed_time=progress["elapsed_time"],
@@ -1580,6 +1792,9 @@ async def get_advanced_test_progress(test_id: str, db: Session = Depends(get_db)
             message=progress.get("message"),
             auth_sessions=auth_sessions
         )
+        
+        logger.info(f"[PROGRESS] Returning progress for test {test_id}, status: {progress['status']}")
+        return response
     except Exception as e:
         logger.error(f"Error getting test progress: {str(e)}", exc_info=True)
         raise HTTPException(

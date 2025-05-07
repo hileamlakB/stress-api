@@ -593,7 +593,7 @@ export default ApiService.getInstance();
  */
 export async function fetchTestResults(testId: string) {
   try {
-    const response = await fetch(`/api/stress-test/results/${testId}`, {
+    const response = await fetch(`/api/stress-test/${testId}/results`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'

@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 _task_queue: "asyncio.Queue[Tuple[str, Dict[str, Any]]]" = asyncio.Queue()
 _task_status: Dict[str, Dict[str, Any]] = {}
 
+# Global dictionary to store completed test results that can be accessed from any module
+completed_test_results: Dict[str, Dict[str, Any]] = {}
+
 async def add_task(params: Dict[str, Any]) -> str:
     """Add a task to the queue and return its ID
     
@@ -83,6 +86,19 @@ async def worker_loop():
             _task_status[task_id]["status"] = "completed"
             _task_status[task_id]["message"] = "Task completed successfully"
             _task_status[task_id]["end_time"] = datetime.now()
+            
+            # Store results in the global completed_test_results dictionary
+            if "results" in _task_status[task_id]:
+                logger.info(f"[TASK_QUEUE] Storing results for completed task {task_id} in global dictionary")
+                completed_test_results[task_id] = {
+                    "status": "completed",
+                    "results": _task_status[task_id]["results"],
+                    "start_time": _task_status[task_id]["start_time"],
+                    "end_time": _task_status[task_id]["end_time"],
+                    "config": params.get("config"),
+                    "summary": _task_status[task_id]["results"].get("summary", {})
+                }
+            
             logger.info(f"[TASK_QUEUE] Completed task {task_id}")
         except Exception as exc:
             logger.exception(f"[TASK_QUEUE] Task {task_id} failed: {exc}")
@@ -90,6 +106,15 @@ async def worker_loop():
             _task_status[task_id]["message"] = f"Task failed: {str(exc)}"
             _task_status[task_id]["end_time"] = datetime.now()
             _task_status[task_id]["error"] = str(exc)
+            
+            # Store failed task info in completed_test_results as well
+            completed_test_results[task_id] = {
+                "status": "failed",
+                "error": str(exc),
+                "start_time": _task_status[task_id]["start_time"],
+                "end_time": _task_status[task_id]["end_time"],
+                "config": params.get("config")
+            }
         finally:
             _task_queue.task_done()
 
@@ -920,7 +945,19 @@ async def handle_sequential_stress_test(task_id: str, params: Dict[str, Any]):
         f"({int(results['summary']['successful_requests']/results['summary']['total_requests']*100 if results['summary']['total_requests'] > 0 else 0)}%), "
         f"avg: {results['summary']['avg_response_time']}s"
     )
+    
+    # Store the completed test results in the global dictionary
+    completed_test_results[task_id] = {
+        "status": "completed",
+        "results": results,
+        "start_time": _task_status[task_id].get("start_time"),
+        "end_time": datetime.now(),
+        "config": params.get("config"),
+        "summary": results.get("summary", {})
+    }
+    
     logger.info(f"[TASK_QUEUE] Completed sequential stress test for {task_id}")
+    logger.info(f"[TASK_QUEUE] Stored results in global completed_test_results dictionary")
 
 def get_task_status(task_id: str) -> Dict[str, Any]:
     """Get status of a task by ID
@@ -933,9 +970,15 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
     - end_time: when task completed/failed
     - error: error message if failed
     """
+    # First check active task status
     status = _task_status.get(task_id, {})
     
-    # If task not found, return minimal response
+    # If not found in active tasks, check completed tasks
+    if not status and task_id in completed_test_results:
+        logger.info(f"[TASK_QUEUE] Task {task_id} found in completed_test_results")
+        return completed_test_results[task_id]
+    
+    # If task not found anywhere, return minimal response
     if not status:
         return {"status": "not_found", "message": "Task not found"}
         

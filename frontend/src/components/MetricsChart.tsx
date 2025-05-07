@@ -19,6 +19,7 @@ interface MetricsChartProps {
   chartType: 'avgResponse' | 'successRate' | 'minResponse' | 'maxResponse';
   title: string;
   detailedMetrics?: DetailedEndpointMetric[];
+  preloadedResults?: any;
 }
 
 const endpointColors = [
@@ -69,7 +70,7 @@ function transformMetricsForChart(metrics: DetailedEndpointMetric[]): any[] {
   return result;
 }
 
-export function MetricsChart({ className, testId, chartType, title, detailedMetrics = [] }: MetricsChartProps) {
+export function MetricsChart({ className, testId, chartType, title, detailedMetrics = [], preloadedResults }: MetricsChartProps) {
   const [chartData, setChartData] = useState<any[]>([]);
   const [endpoints, setEndpoints] = useState<string[]>([]);
   const [concurrencyLevels, setConcurrencyLevels] = useState<number[]>([]);
