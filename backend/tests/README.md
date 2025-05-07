@@ -1,68 +1,75 @@
-# StressAPI Testing Suite
+# Stress API Tests
 
-This directory contains the testing suite for the StressAPI application, focusing on both unit tests and integration testing of the dashboard's frontend-backend connectivity.
+This directory contains both unit tests and integration tests for the Stress API.
 
-## Test Files Overview
+## Directory Structure
+```
+backend/
+├── tests/
+│   ├── test_api.py         # Unit tests for API models
+│   ├── test_integration.py # Integration tests for API endpoints
+│   ├── mock_main.py        # Mock FastAPI app for testing
+│   └── requirements-test.txt # Test dependencies
+```
 
-- `test_stress_tester.py` - Unit tests for the core StressTester functionality
-- `test_dashboard_integration.py` - Tests form input capture/validation and API integration with mocked responses
-- `test_real_integration.py` - Live integration tests that require the backend server to be running
+## Setup
+
+1. Create a Python virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+2. Install test dependencies:
+```bash
+cd backend/tests
+pip install -r requirements-test.txt
+```
 
 ## Running Tests
 
-For convenience, a shell script is provided to help run the tests with the correct Python version (3.10) and inside the virtual environment:
-
+### Running Unit Tests
+To run only the API model unit tests:
 ```bash
-# Run all tests (unit tests and integration tests if backend is running)
-./run_tests.sh all
-
-# Run only unit tests (does not require backend to be running)
-./run_tests.sh unit  
-
-# Run only live integration tests (requires backend to be running)
-./run_tests.sh live
+cd backend/tests
+python -m pytest test_api.py -v
 ```
 
-## Test Endpoints
+This will run 25 unit tests that verify:
+- Enum validations
+- Model field validations
+- Configuration validations
+- Edge cases and error scenarios
 
-The test suite is configured to work with these API endpoints:
-
-1. Local FastAPI instance: `http://127.0.0.1:8000`
-2. External testing APIs:
-   - `https://api.thebighalo.com`
-   - `https://httpbin.dmuth.org`
-
-## Adding New Tests
-
-To add new test cases:
-
-1. For unit tests, add new test methods to the existing test classes
-2. For integration tests, add new test methods to `TestDashboardIntegration` or `TestRealIntegration` classes
-3. Make sure to follow the existing naming conventions for test methods (e.g., `test_feature_scenario`)
-
-## Live Integration Testing
-
-The live integration tests require the backend server to be running. To start the backend server:
-
+### Running Integration Tests
+To run only the integration tests:
 ```bash
-# Navigate to backend directory
-cd ..
-
-# Start the backend server
-python3.10 main.py
+cd backend/tests
+python -m pytest test_integration.py -v
 ```
 
-Then in another terminal window, you can run the live integration tests:
+This will run 3 integration tests that verify:
+1. Complete stress test workflow
+2. Advanced multi-endpoint testing
+3. Error handling
 
+### Running All Tests
+To run both unit and integration tests:
 ```bash
-./run_tests.sh live
+cd backend/tests
+python -m pytest -v
 ```
 
-## Troubleshooting
+## Test Coverage
+- **Unit Tests**: Cover all API models, their validations, and edge cases
+- **Integration Tests**: Cover end-to-end API workflows and error scenarios
+  - API endpoint validation
+  - Stress test configuration and execution
+  - Result verification
+  - Session management
+  - Error handling
 
-If you encounter issues with the tests:
-
-1. Make sure you're using Python 3.10
-2. Ensure all dependencies are installed (`requests` is needed for the tests)
-3. Check that the virtual environment is activated
-4. For live tests, verify the backend server is running at http://127.0.0.1:8000
+## Notes
+- Integration tests use a mock FastAPI application to avoid external dependencies
+- Tests are designed to run quickly and deterministically
+- All tests are independent and can be run in any order
