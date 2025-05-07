@@ -282,6 +282,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "Authorization", "Content-Length", "X-Request-Id"],
 )
 
 # Include the stress test API router
@@ -2137,5 +2138,3 @@ async def generate_fake_data(request: dict, current_user: Optional[User] = Depen
             detail=f"Error generating fake data: {str(e)}"
         )
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)

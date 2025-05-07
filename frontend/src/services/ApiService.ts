@@ -1,6 +1,9 @@
 import { EndpointSchema } from '../types/api';
 import { supabase } from '../lib/supabase';
 
+// API base URL - uses environment variable or default to production URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://stress-api-production.up.railway.app';
+
 /**
  * Service for interacting with the backend API
  */
@@ -14,6 +17,20 @@ export class ApiService {
       ApiService.instance = new ApiService();
     }
     return ApiService.instance;
+  }
+
+  /**
+   * Get API URL based on the current environment
+   * @param endpoint API endpoint path (should start with /)
+   * @returns Full API URL
+   */
+  private getApiUrl(endpoint: string): string {
+    // For local development, use relative URLs to leverage the Vite proxy
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return endpoint;
+    }
+    // For production, use the full API URL
+    return `${API_BASE_URL}${endpoint}`;
   }
 
   /**
@@ -43,7 +60,7 @@ export class ApiService {
    */
   async fetchEndpoints(targetUrl: string): Promise<EndpointSchema[]> {
     try {
-      const response = await fetch('/api/openapi-endpoints', {
+      const response = await fetch(this.getApiUrl('/api/openapi-endpoints'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         body: JSON.stringify({ target_url: targetUrl }),
@@ -69,7 +86,7 @@ export class ApiService {
    */
   async startStressTest(config: any) {
     try {
-      const response = await fetch('/api/advanced-test', {
+      const response = await fetch(this.getApiUrl('/api/advanced-test'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         body: JSON.stringify(config),
@@ -94,7 +111,7 @@ export class ApiService {
    */
   async validateTarget(targetUrl: string) {
     try {
-      const response = await fetch('/api/validate-target', {
+      const response = await fetch(this.getApiUrl('/api/validate-target'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         body: JSON.stringify({ target_url: targetUrl }),
@@ -118,7 +135,7 @@ export class ApiService {
    */
   async fetchDistributionStrategies() {
     try {
-      const response = await fetch('/api/distribution-strategies', {
+      const response = await fetch(this.getApiUrl('/api/distribution-strategies'), {
         headers: await this.getAuthHeaders(),
       });
       
@@ -140,7 +157,7 @@ export class ApiService {
    */
   async fetchDistributionRequirements() {
     try {
-      const response = await fetch('/api/distribution-requirements', {
+      const response = await fetch(this.getApiUrl('/api/distribution-requirements'), {
         headers: await this.getAuthHeaders(),
       });
       
@@ -163,7 +180,7 @@ export class ApiService {
    */
   async generateTestData(endpoint: EndpointSchema) {
     try {
-      const response = await fetch('/api/generate-sample-data', {
+      const response = await fetch(this.getApiUrl('/api/generate-sample-data'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         body: JSON.stringify(endpoint),
@@ -194,7 +211,7 @@ export class ApiService {
       
       console.log(`Fetching sessions for user: ${email}`);
       
-      const response = await fetch(`/api/user/${encodeURIComponent(email)}/sessions`, {
+      const response = await fetch(this.getApiUrl(`/api/user/${encodeURIComponent(email)}/sessions`), {
         method: 'GET',
         headers: await this.getAuthHeaders(),
         credentials: 'include',
@@ -350,7 +367,7 @@ export class ApiService {
     try {
       console.log(`Creating direct test session with email: ${email}, name: ${name}`);
       
-      const response = await fetch('/api/sessions/direct', {
+      const response = await fetch(this.getApiUrl('/api/sessions/direct'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         credentials: 'include',
@@ -479,7 +496,7 @@ export class ApiService {
    */
   async updateSessionState(sessionId: string, configData: any) {
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/configuration`, {
+      const response = await fetch(this.getApiUrl(`/api/sessions/${sessionId}/configuration`), {
         method: 'PUT',
         headers: await this.getAuthHeaders(),
         credentials: 'include',
@@ -505,7 +522,7 @@ export class ApiService {
    */
   async getTestProgress(testId: string) {
     try {
-      const response = await fetch(`/api/stress-test/${testId}/progress`, {
+      const response = await fetch(this.getApiUrl(`/api/stress-test/${testId}/progress`), {
         headers: await this.getAuthHeaders(),
       });
 
@@ -545,7 +562,7 @@ export class ApiService {
    */
   async getTestResults(testId: string) {
     try {
-      const response = await fetch(`/api/stress-test/${testId}/results`, {
+      const response = await fetch(this.getApiUrl(`/api/stress-test/${testId}/results`), {
         headers: await this.getAuthHeaders(),
       });
 
@@ -564,7 +581,7 @@ export class ApiService {
   // Add method to generate fake data for an endpoint
   async generateFakeData(baseUrl: string, method: string, path: string): Promise<any> {
     try {
-      const response = await fetch('/api/generate-fake-data', {
+      const response = await fetch(this.getApiUrl('/api/generate-fake-data'), {
         method: 'POST',
         headers: await this.getAuthHeaders(),
         body: JSON.stringify({
@@ -593,7 +610,12 @@ export default ApiService.getInstance();
  */
 export async function fetchTestResults(testId: string) {
   try {
-    const response = await fetch(`/api/stress-test/${testId}/results`, {
+    // Determine if we should use a relative URL or the full API base URL
+    const baseUrl = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') 
+      ? '' 
+      : API_BASE_URL;
+    
+    const response = await fetch(`${baseUrl}/api/stress-test/${testId}/results`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'

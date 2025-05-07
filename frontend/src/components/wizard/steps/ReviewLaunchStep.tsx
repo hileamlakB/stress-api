@@ -6,6 +6,12 @@ import apiService from '../../../services/ApiService';
 import { StressTestConfig, StressTestEndpointConfig, TestProgress, SessionStatus } from '../../../types/api';
 import { AuthConfig, AuthMethod } from '../WizardContext';
 
+// Storage key constants
+const STORAGE_KEY_TEST_STARTED = 'stressTestWizard_testStarted';
+const STORAGE_KEY_TEST_ID = 'stressTestWizard_testId';
+const STORAGE_KEY_TEST_PROGRESS = 'stressTestWizard_testProgress';
+const STORAGE_KEY_TEST_RESULTS = 'stressTestWizard_testResults';
+
 export function ReviewLaunchStep() {
   const {
     baseUrl,
@@ -30,6 +36,75 @@ export function ReviewLaunchStep() {
   const [currentTestId, setCurrentTestId] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [expandedLevels, setExpandedLevels] = useState<string[]>([]);
+  
+  // Load saved state from localStorage on component mount
+  useEffect(() => {
+    try {
+      // Check if we have saved test state
+      const savedTestStarted = localStorage.getItem(STORAGE_KEY_TEST_STARTED);
+      const savedTestId = localStorage.getItem(STORAGE_KEY_TEST_ID);
+      const savedTestProgress = localStorage.getItem(STORAGE_KEY_TEST_PROGRESS);
+      const savedTestResults = localStorage.getItem(STORAGE_KEY_TEST_RESULTS);
+      
+      if (savedTestStarted === 'true' && savedTestId) {
+        // Restore test state
+        setTestStarted(true);
+        setCurrentTestId(savedTestId);
+        setActiveTestId(savedTestId);
+        
+        // Try to restore test progress
+        if (savedTestProgress) {
+          try {
+            setTestProgress(JSON.parse(savedTestProgress));
+          } catch (e) {
+            console.error('Error parsing saved test progress:', e);
+          }
+        }
+        
+        // Try to restore test results
+        if (savedTestResults) {
+          try {
+            setTestResults(JSON.parse(savedTestResults));
+          } catch (e) {
+            console.error('Error parsing saved test results:', e);
+          }
+        }
+        
+        // If the test was running, restart polling for updates
+        const progress = savedTestProgress ? JSON.parse(savedTestProgress) : null;
+        if (progress && progress.status === 'running') {
+          startPolling(savedTestId);
+        }
+      }
+    } catch (e) {
+      console.error('Error restoring saved test state:', e);
+    }
+  }, []);
+  
+  // Save state to localStorage whenever test state changes
+  useEffect(() => {
+    if (testStarted && currentTestId) {
+      localStorage.setItem(STORAGE_KEY_TEST_STARTED, 'true');
+      localStorage.setItem(STORAGE_KEY_TEST_ID, currentTestId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_TEST_STARTED);
+      localStorage.removeItem(STORAGE_KEY_TEST_ID);
+    }
+  }, [testStarted, currentTestId]);
+  
+  // Save test progress to localStorage
+  useEffect(() => {
+    if (testProgress) {
+      localStorage.setItem(STORAGE_KEY_TEST_PROGRESS, JSON.stringify(testProgress));
+    }
+  }, [testProgress]);
+  
+  // Save test results to localStorage
+  useEffect(() => {
+    if (testResults) {
+      localStorage.setItem(STORAGE_KEY_TEST_RESULTS, JSON.stringify(testResults));
+    }
+  }, [testResults]);
   
   // Clean up polling on unmount
   useEffect(() => {
@@ -1221,14 +1296,53 @@ export function ReviewLaunchStep() {
                 RESTART TEST
               </Button>
             ) : (
-              <Button
-                onClick={() => window.location.reload()}
-                className="flex items-center py-2 px-6 bg-green-600 hover:bg-green-700"
-                size="lg"
-              >
-                <RefreshCw className="h-5 w-5 mr-2" />
-                RUN NEW TEST
-              </Button>
+              <>
+                {/* Test results are available - show results button */}
+                {testResults && (
+                  <Button
+                    onClick={() => {
+                      // Navigate to results page
+                      if (currentTestId) {
+                        window.location.href = `/results/${currentTestId}`;
+                      }
+                    }}
+                    className="flex items-center py-2 px-6 bg-blue-600 hover:bg-blue-700"
+                    size="lg"
+                  >
+                    <span className="mr-2">📊</span>
+                    VIEW DETAILED RESULTS
+                  </Button>
+                )}
+                
+                {/* Button to reset the state and start a new test */}
+                <Button
+                  onClick={() => {
+                    // Clear all test state from localStorage
+                    localStorage.removeItem(STORAGE_KEY_TEST_STARTED);
+                    localStorage.removeItem(STORAGE_KEY_TEST_ID);
+                    localStorage.removeItem(STORAGE_KEY_TEST_PROGRESS);
+                    localStorage.removeItem(STORAGE_KEY_TEST_RESULTS);
+                    
+                    // Reset component state
+                    setTestStarted(false);
+                    setCurrentTestId(null);
+                    setTestProgress(null);
+                    setTestResults(null);
+                    setActiveTestId(null);
+                    
+                    // Clear any polling
+                    if (pollingInterval) {
+                      clearInterval(pollingInterval);
+                      setPollingInterval(null);
+                    }
+                  }}
+                  className="flex items-center py-2 px-6 bg-green-600 hover:bg-green-700"
+                  size="lg"
+                >
+                  <RefreshCw className="h-5 w-5 mr-2" />
+                  RUN NEW TEST
+                </Button>
+              </>
             )}
           </div>
         )}
