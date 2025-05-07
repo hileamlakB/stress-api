@@ -171,6 +171,12 @@ export interface TestProgress {
   elapsed_time: number;
   completed_requests: number;
   results_available: boolean;
+  message?: string;
+  auth_sessions?: any[]; // Authentication sessions data
+  concurrency_levels?: Record<string, any>; // Results from each concurrency level test
+  current_level?: number; // Current concurrency level being tested
+  total_levels?: number; // Total number of concurrency levels to test
+  current_level_index?: number; // Index of current level in sequence
 }
 
 // Session Status types

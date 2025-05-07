@@ -149,6 +149,12 @@ class StressTestProgressResponse(BaseModel):
     elapsed_time: float = Field(..., description="Elapsed time in seconds")
     completed_requests: int = Field(..., description="Number of completed requests")
     results_available: bool = Field(..., description="Whether partial results are available")
+    message: Optional[str] = Field(None, description="Status message")
+    auth_sessions: Optional[List[Dict[str, Any]]] = Field(None, description="Authentication sessions status")
+    concurrency_levels: Optional[Dict[str, Any]] = Field(None, description="Results from each concurrency level test")
+    current_level: Optional[int] = Field(None, description="Current concurrency level being tested")
+    total_levels: Optional[int] = Field(None, description="Total number of concurrency levels to test")
+    current_level_index: Optional[int] = Field(None, description="Index of current level in sequence")
 
 class EndpointResult(BaseModel):
     endpoint: str = Field(..., description="Endpoint path and method")
@@ -294,3 +300,65 @@ class SessionStatusResponse(BaseModel):
     auth_type: Optional[str] = Field(None, description="Authentication type")
     login_endpoint: Optional[str] = Field(None, description="Login endpoint for session authentication")
     acquired_sessions: List[SessionInfo] = Field(default_factory=list, description="List of acquired sessions")
+
+# New models to match the frontend's StressTestConfig structure
+class TestDataParams(BaseModel):
+    path_params: Dict[str, Any] = Field(default_factory=dict, description="Path parameters")
+    query_params: Dict[str, Any] = Field(default_factory=dict, description="Query parameters")
+    request_body: Dict[str, Any] = Field(default_factory=dict, description="Request body data")
+
+class TestDataSample(BaseModel):
+    name: str = Field(..., description="Name of the test data sample")
+    data: TestDataParams = Field(..., description="Sample test data for the endpoint")
+
+class StressTestEndpointTaskConfig(BaseModel):
+    path: str = Field(..., description="Endpoint path")
+    method: str = Field(..., description="HTTP method")
+    weight: float = Field(1.0, description="Weight for distribution strategies")
+    test_data_samples: Optional[List[TestDataSample]] = Field(None, description="Test data samples")
+    data_strategy: Optional[str] = Field(None, description="Data sampling strategy")
+    content_type: Optional[str] = Field("application/json", description="Content type for requests")
+    has_body: Optional[bool] = Field(None, description="Whether the endpoint accepts a request body")
+    
+# Different authentication types matching frontend
+class SessionAuthConfig(BaseModel):
+    type: Literal["session"] = "session"
+    login_endpoint: str = Field(..., description="Login endpoint URL")
+    login_method: str = Field("POST", description="Login endpoint HTTP method")
+    login_payload: Optional[Dict[str, Any]] = Field(None, description="Login credentials")
+    multiple_accounts: Optional[bool] = Field(False, description="Whether to use multiple accounts")
+    accounts: Optional[List[Dict[str, Any]]] = Field(None, description="List of account credentials")
+
+class TokenAuthConfig(BaseModel):
+    type: Literal["token"] = "token"
+    multiple_tokens: bool = Field(..., description="Whether to use multiple tokens")
+    tokens: List[str] = Field(..., description="List of bearer tokens")
+
+class BasicAuthConfig(BaseModel):
+    type: Literal["basic"] = "basic"
+    multiple_accounts: bool = Field(..., description="Whether to use multiple accounts")
+    accounts: List[Dict[str, str]] = Field(..., description="List of username/password pairs")
+
+# Main task configuration model to match frontend StressTestConfig
+class StressTestTaskConfig(BaseModel):
+    target_url: str = Field(..., description="URL of the target API to test")
+    max_concurrent_users: int = Field(..., ge=1, le=1000, description="Maximum number of concurrent users")
+    request_rate: int = Field(..., ge=1, description="Number of requests per second")
+    duration: int = Field(..., ge=1, description="Test duration in seconds")
+    strategy: str = Field(..., description="Distribution strategy (sequential, interleaved, random)")
+    endpoints: List[StressTestEndpointTaskConfig] = Field(..., min_items=1, description="List of endpoints to test")
+    headers: Optional[Dict[str, str]] = Field(None, description="Optional request headers")
+    query_params: Optional[Dict[str, str]] = Field(None, description="Optional query parameters")
+    use_random_session: Optional[bool] = Field(False, description="Whether to use random sessions for testing")
+    strategy_options: Optional[Dict[str, Any]] = Field(None, description="Strategy-specific options")
+    authentication: Optional[Union[SessionAuthConfig, TokenAuthConfig, BasicAuthConfig]] = Field(None, description="Authentication configuration")
+
+class StressTestTaskRequest(BaseModel):
+    config: StressTestTaskConfig = Field(..., description="Stress test configuration")
+    test_id: Optional[str] = Field(None, description="Optional test ID for saving results")
+    
+class StressTestTaskResponse(BaseModel):
+    test_id: str = Field(..., description="Unique identifier for the test")
+    status: TestStatus = Field(..., description="Current test status")
+    message: str = Field("Test started successfully", description="Status message")
+    timestamp: datetime = Field(default_factory=datetime.now, description="Timestamp")

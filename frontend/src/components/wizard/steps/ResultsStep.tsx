@@ -12,8 +12,8 @@ export function ResultsStep() {
           <div className="ml-3">
             <p className="text-sm text-blue-700">
               {activeTestId 
-                ? 'Your stress test is running. Live metrics are displayed below.'
-                : 'No active test is running. Start a test to see live metrics.'}
+                ? 'Test results are displayed below. Each chart shows performance metrics across different concurrency levels.'
+                : 'No test data available. Run a stress test to see performance metrics.'}
             </p>
           </div>
         </div>
@@ -22,7 +22,7 @@ export function ResultsStep() {
       {activeTestId ? (
         <div className="bg-white rounded-lg shadow">
           <div className="p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">Live Test Metrics</h2>
+            <h2 className="text-lg font-semibold">Stress Test Results</h2>
             <p className="text-sm text-gray-500">Test ID: {activeTestId}</p>
           </div>
           <MetricsPanel testId={activeTestId} />
@@ -31,7 +31,7 @@ export function ResultsStep() {
         <div className="bg-white rounded-lg shadow">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold">Example Visualization</h2>
-            <p className="text-sm text-gray-500">This is how your metrics will look during a load test</p>
+            <p className="text-sm text-gray-500">This is how your metrics will look after a stress test completes</p>
           </div>
           <DemoMetricsPanel />
         </div>

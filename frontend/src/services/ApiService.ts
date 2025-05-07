@@ -522,24 +522,41 @@ export class ApiService {
   }
 
   /**
-   * Get detailed session acquisition status for a test
+   * DEPRECATED: Use getTestProgress instead, which now includes auth_sessions
+   * This method is kept for backward compatibility but does nothing
    * @param testId The ID of the test to check
-   * @returns Session acquisition information
+   * @returns Empty session object
    */
   async getSessionStatus(testId: string) {
+    console.warn('getSessionStatus is deprecated. Use getTestProgress instead which includes auth_sessions.');
+    // Return an empty object compatible with SessionStatus interface
+    return {
+      test_id: testId,
+      status: 'running',
+      auth_type: 'none',
+      acquired_sessions: []
+    };
+  }
+
+  /**
+   * Get test results for a completed test
+   * @param testId The ID of the test to get results for
+   * @returns Test results data
+   */
+  async getTestResults(testId: string) {
     try {
-      const response = await fetch(`/api/stress-test/${testId}/session-status`, {
+      const response = await fetch(`/api/stress-test/${testId}/results`, {
         headers: await this.getAuthHeaders(),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to get session acquisition status');
+        throw new Error(errorData.detail || 'Failed to get test results');
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error getting session status:', error);
+      console.error('Error getting test results:', error);
       throw error;
     }
   }
@@ -570,3 +587,27 @@ export class ApiService {
 }
 
 export default ApiService.getInstance();
+
+/**
+ * Fetch complete test results for a specific test
+ */
+export async function fetchTestResults(testId: string) {
+  try {
+    const response = await fetch(`/api/stress-test/results/${testId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to fetch test results');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching test results:', error);
+    throw error;
+  }
+}

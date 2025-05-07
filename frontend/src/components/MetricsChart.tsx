@@ -7,7 +7,8 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  ReferenceLine
 } from 'recharts';
 import { cn } from '../lib/utils';
 import { MetricsService, DetailedEndpointMetric } from '../services/MetricsService';
@@ -21,44 +22,76 @@ interface MetricsChartProps {
 }
 
 const endpointColors = [
-  '#8884d8',
-  '#82ca9d',
-  '#ffc658',
-  '#ff8042',
-  '#a4de6c',
-  '#d0ed57',
-  '#83a6ed',
-  '#8dd1e1',
+  '#8884d8', // Purple
+  '#82ca9d', // Green
+  '#ffc658', // Yellow
+  '#ff8042', // Orange
+  '#a4de6c', // Light Green
+  '#d0ed57', // Lime
+  '#83a6ed', // Light Blue
+  '#8dd1e1', // Cyan
 ];
 
 // Transform detailed metrics into chart-friendly format
 function transformMetricsForChart(metrics: DetailedEndpointMetric[]): any[] {
   if (!metrics || metrics.length === 0) return [];
   
-  return metrics.map(metric => ({
-    endpoint: metric.endpoint,
-    concurrentRequests: metric.concurrentRequests,
-    avgResponseTime: metric.responseTime.avg,
-    minResponseTime: metric.responseTime.min,
-    maxResponseTime: metric.responseTime.max,
-    successRate: metric.successRate * 100, // Convert to percentage
-  }));
+  // Group by endpoint
+  const endpointGroups: Record<string, DetailedEndpointMetric[]> = {};
+  
+  metrics.forEach(metric => {
+    if (!endpointGroups[metric.endpoint]) {
+      endpointGroups[metric.endpoint] = [];
+    }
+    endpointGroups[metric.endpoint].push({...metric});
+  });
+  
+  // Sort each endpoint group by concurrency level
+  Object.keys(endpointGroups).forEach(endpoint => {
+    endpointGroups[endpoint].sort((a, b) => a.concurrentRequests - b.concurrentRequests);
+  });
+  
+  // Flatten back to array for chart
+  const result: any[] = [];
+  Object.values(endpointGroups).forEach(endpointMetrics => {
+    endpointMetrics.forEach(metric => {
+      result.push({
+        endpoint: metric.endpoint,
+        concurrentRequests: metric.concurrentRequests,
+        avgResponseTime: metric.responseTime.avg,
+        minResponseTime: metric.responseTime.min,
+        maxResponseTime: metric.responseTime.max,
+        successRate: metric.successRate * 100, // Convert to percentage
+      });
+    });
+  });
+  
+  return result;
 }
 
 export function MetricsChart({ className, testId, chartType, title, detailedMetrics = [] }: MetricsChartProps) {
   const [chartData, setChartData] = useState<any[]>([]);
   const [endpoints, setEndpoints] = useState<string[]>([]);
+  const [concurrencyLevels, setConcurrencyLevels] = useState<number[]>([]);
 
   useEffect(() => {
     // Transform detailed metrics for chart display
     if (detailedMetrics && detailedMetrics.length > 0) {
       const transformedData = transformMetricsForChart(detailedMetrics);
       setChartData(transformedData);
-      setEndpoints(Array.from(new Set(transformedData.map(m => m.endpoint))));
+      
+      // Extract unique endpoints
+      const uniqueEndpoints = Array.from(new Set(transformedData.map(m => m.endpoint)));
+      setEndpoints(uniqueEndpoints);
+      
+      // Extract unique concurrency levels for grid lines
+      const uniqueConLevels = Array.from(new Set(transformedData.map(m => m.concurrentRequests))).sort((a, b) => a - b);
+      setConcurrencyLevels(uniqueConLevels);
     } else {
       // Use empty data when no metrics are available
       setChartData([]);
       setEndpoints([]);
+      setConcurrencyLevels([]);
     }
   }, [detailedMetrics]);
 
@@ -110,9 +143,12 @@ export function MetricsChart({ className, testId, chartType, title, detailedMetr
               dataKey="concurrentRequests"
               type="number"
               label={{ value: 'Concurrent Requests', position: 'bottom' }}
+              domain={['dataMin', 'dataMax']}
+              allowDecimals={false}
+              ticks={concurrencyLevels}
             />
             <YAxis
-              domain={chartType === 'successRate' ? [80, 100] : ['auto', 'auto']}
+              domain={chartType === 'successRate' ? [0, 100] : ['auto', 'auto']}
               label={{ 
                 value: getYAxisLabel(), 
                 angle: -90, 
@@ -130,18 +166,39 @@ export function MetricsChart({ className, testId, chartType, title, detailedMetr
               align="right"
               wrapperStyle={{ paddingLeft: '10px' }}
             />
-            {endpoints.map((endpoint, index) => (
-              <Line
-                key={endpoint}
-                type="monotone"
-                data={chartData.filter(m => m.endpoint === endpoint)}
-                dataKey={getDataKey()}
-                name={endpoint}
-                stroke={endpointColors[index % endpointColors.length]}
-                dot={true}
-                activeDot={{ r: 6 }}
+            
+            {/* Add reference lines for each concurrency level */}
+            {concurrencyLevels.map(level => (
+              <ReferenceLine 
+                key={`ref-${level}`} 
+                x={level} 
+                stroke="#ccc" 
+                strokeDasharray="3 3" 
+                label={{ value: `${level}`, position: 'bottom', fill: '#666', fontSize: 10 }} 
               />
             ))}
+            
+            {endpoints.map((endpoint, index) => {
+              // Get data for this endpoint
+              const endpointData = chartData.filter(m => m.endpoint === endpoint);
+              // Sort by concurrency level to ensure proper line
+              endpointData.sort((a, b) => a.concurrentRequests - b.concurrentRequests);
+              
+              return (
+                <Line
+                  key={endpoint}
+                  type="monotone"
+                  data={endpointData}
+                  dataKey={getDataKey()}
+                  name={endpoint}
+                  stroke={endpointColors[index % endpointColors.length]}
+                  strokeWidth={2}
+                  dot={{ r: 5, strokeWidth: 1 }}
+                  activeDot={{ r: 7, strokeWidth: 1 }}
+                  connectNulls={true}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
