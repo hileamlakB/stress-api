@@ -124,8 +124,8 @@ class StressTestEndpointConfig(BaseModel):
     method: str = Field(..., description="HTTP method")
     weight: Optional[float] = Field(1.0, description="Weight for distribution strategies")
     custom_parameters: Optional[Dict[str, Any]] = Field(None, description="Custom parameters for this endpoint")
-    data_strategy: DataGenerationStrategy = Field(
-        DataGenerationStrategy.CONSISTENT_RANDOM, 
+    data_strategy: Optional[DataGenerationStrategy] = Field(
+        default=DataGenerationStrategy.CONSISTENT_RANDOM, 
         description="Strategy for generating test data"
     )
     test_data_samples: Optional[List[Dict[str, Any]]] = Field(
@@ -316,7 +316,10 @@ class StressTestEndpointTaskConfig(BaseModel):
     method: str = Field(..., description="HTTP method")
     weight: float = Field(1.0, description="Weight for distribution strategies")
     test_data_samples: Optional[List[TestDataSample]] = Field(None, description="Test data samples")
-    data_strategy: Optional[str] = Field(None, description="Data sampling strategy")
+    data_strategy: Optional[Literal["random_each_time", "consistent_random", "user_defined"]] = Field(
+        default="consistent_random", 
+        description="Data sampling strategy"
+    )
     content_type: Optional[str] = Field("application/json", description="Content type for requests")
     has_body: Optional[bool] = Field(None, description="Whether the endpoint accepts a request body")
     
