@@ -11,13 +11,14 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.7",
+    "@tanstack/react-query": "^5.25.0",
+    "clsx": "^2.1.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hot-toast": "^2.5.2",
     "react-router-dom": "^6.22.3",
-    "@tanstack/react-query": "^5.25.0",
     "recharts": "^2.12.2",
-    "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.1",
     "zod": "^3.22.4"
   },

@@ -105,3 +105,27 @@ class TestResult(Base):
 
     def __repr__(self):
         return f"<TestResult(id={self.id}, test_id={self.test_id}, status={self.status})>"
+
+class TaskRecord(Base):
+    """Represents a background task in the database"""
+    __tablename__ = 'task_records'
+    
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    task_id = Column(String, unique=True, nullable=False)  # Unique task ID
+    task_type = Column(String, nullable=False)  # Type of task (e.g., "stress_test")
+    user_id = Column(GUID(), ForeignKey('users.id'), nullable=True)  # Optional user association
+    status = Column(String, nullable=False)  # pending, running, completed, failed, canceled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    progress = Column(Integer, default=0)  # 0-100
+    params = Column(JSON, nullable=True)  # Task parameters
+    result = Column(JSON, nullable=True)  # Task result
+    error = Column(String, nullable=True)  # Error message if failed
+    current_operation = Column(String, nullable=True)  # Current operation description
+    
+    # Relationship to user if applicable
+    user = relationship("User")
+    
+    def __repr__(self):
+        return f"<TaskRecord(id={self.id}, task_id={self.task_id}, task_type={self.task_type}, status={self.status})>"

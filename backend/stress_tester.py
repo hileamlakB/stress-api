@@ -27,6 +27,10 @@ class StressTester:
         self.session_status = {}
         self.acquired_sessions = {}
         
+        # New state for authentication tokens and credentials
+        self.authentication_tokens = {}
+        self.basic_auth_credentials = {}
+        
         # Import RequestDataGenerator here to avoid circular imports
         from data_generator import RequestDataGenerator
         self.request_generator = RequestDataGenerator()
@@ -153,8 +157,10 @@ class StressTester:
                                request_rate: int, 
                                duration: int,
                                headers: Optional[Dict[str, str]] = None,
-                               endpoint_schemas: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Run sequential tests on multiple endpoints"""
+                               endpoint_schemas: Optional[Dict[str, Any]] = None,
+                               delay_ms: int = 0,
+                               repeat_count: int = 1) -> Dict[str, List[Dict[str, Any]]]:
+        """Run sequential tests one endpoint at a time"""
         self.active_tests[test_id] = True
         self.results[test_id] = {}
         self.completed_requests[test_id] = 0
@@ -162,50 +168,65 @@ class StressTester:
         # Store start time
         self.test_start_times[test_id] = datetime.now()
         
-        # Test each endpoint sequentially with increasing concurrency
+        # Initialize results for each endpoint
+        for endpoint in endpoints:
+            path = endpoint['path']
+            method = endpoint['method']
+            endpoint_key = f"{method} {path}"
+            self.results[test_id][endpoint_key] = []
+        
+        # Start with a low concurrency and increase
+        concurrent_levels = [1, 2, 4, 8, 16, 32, 64, 128]
+        concurrent_levels = [c for c in concurrent_levels if c <= max_concurrent_users]
+        if max_concurrent_users not in concurrent_levels:
+            concurrent_levels.append(max_concurrent_users)
+        
         async with httpx.AsyncClient() as client:
-            for endpoint in endpoints:
-                path = endpoint['path']
-                method = endpoint['method']
-                custom_params = endpoint.get('custom_parameters')
-                endpoint_key = f"{method} {path}"
-                
-                # Find schema if available
-                schema = None
-                if endpoint_schemas and endpoint_key in endpoint_schemas:
-                    schema = endpoint_schemas[endpoint_key]
-                
-                # Initialize results for this endpoint
-                self.results[test_id][endpoint_key] = []
-                
-                # Start with a low concurrency and increase
-                concurrent_levels = [1, 2, 4, 8, 16, 32, 64, 128]
-                concurrent_levels = [c for c in concurrent_levels if c <= max_concurrent_users]
-                if max_concurrent_users not in concurrent_levels:
-                    concurrent_levels.append(max_concurrent_users)
-                
+            # Repeat the sequence if specified
+            for _ in range(repeat_count):
+                if not self.active_tests.get(test_id, False):
+                    break
+            
                 for concurrent_users in concurrent_levels:
                     if not self.active_tests.get(test_id, False):
                         break
+                    
+                    for endpoint in endpoints:
+                        if not self.active_tests.get(test_id, False):
+                            break
                         
-                    # Run a batch of concurrent requests for this endpoint
-                    endpoint_result = await self._run_concurrent_batch(
-                        client=client,
-                        target_url=target_url,
-                        endpoint_path=path,
-                        endpoint_method=method,
-                        concurrent_requests=concurrent_users,
-                        endpoint_schema=schema,
-                        custom_params=custom_params,
-                        headers=headers
-                    )
-                    
-                    # Store results
-                    self.results[test_id][endpoint_key].append(endpoint_result)
-                    self.completed_requests[test_id] += concurrent_users
-                    
-                    # Add a small delay between tests
-                    await asyncio.sleep(1)
+                        path = endpoint['path']
+                        method = endpoint['method']
+                        custom_params = endpoint.get('custom_parameters')
+                        endpoint_key = f"{method} {path}"
+                        
+                        # Find schema if available
+                        schema = None
+                        if endpoint_schemas and endpoint_key in endpoint_schemas:
+                            schema = endpoint_schemas[endpoint_key]
+                        
+                        # Run a batch of concurrent requests
+                        endpoint_result = await self._run_concurrent_batch(
+                            client=client,
+                            target_url=target_url,
+                            endpoint_path=path,
+                            endpoint_method=method,
+                            concurrent_requests=concurrent_users,
+                            endpoint_schema=schema,
+                            custom_params=custom_params,
+                            headers=headers
+                        )
+                        
+                        # Store results
+                        self.results[test_id][endpoint_key].append(endpoint_result)
+                        self.completed_requests[test_id] += concurrent_users
+                        
+                        # Add the configured delay between requests if specified
+                        if delay_ms > 0:
+                            await asyncio.sleep(delay_ms / 1000.0)
+                        else:
+                            # Default small delay between tests
+                            await asyncio.sleep(1)
         
         # Test is complete
         self.active_tests[test_id] = False
@@ -221,7 +242,8 @@ class StressTester:
                                 request_rate: int,
                                 duration: int,
                                 headers: Optional[Dict[str, str]] = None,
-                                endpoint_schemas: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
+                                endpoint_schemas: Optional[Dict[str, Any]] = None,
+                                endpoint_distribution: Optional[Dict[str, float]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Run interleaved tests on multiple endpoints based on weights"""
         self.active_tests[test_id] = True
         self.results[test_id] = {}
@@ -231,16 +253,30 @@ class StressTester:
         self.test_start_times[test_id] = datetime.now()
         
         # Initialize results for each endpoint
+        endpoint_keys = []
         for endpoint in endpoints:
             path = endpoint['path']
             method = endpoint['method']
             endpoint_key = f"{method} {path}"
+            endpoint_keys.append(endpoint_key)
             self.results[test_id][endpoint_key] = []
         
         # Calculate weights for distribution
-        weights = [endpoint.get('weight', 1.0) for endpoint in endpoints]
-        total_weight = sum(weights)
-        normalized_weights = [w / total_weight for w in weights]
+        if endpoint_distribution and isinstance(endpoint_distribution, dict):
+            # Use custom distribution if provided
+            normalized_weights = []
+            for endpoint in endpoints:
+                path = endpoint['path']
+                method = endpoint['method']
+                endpoint_key = f"{method} {path}"
+                # Get weight from distribution or use default
+                weight = endpoint_distribution.get(endpoint_key, 1.0)
+                normalized_weights.append(float(weight))
+        else:
+            # Use weights from endpoints
+            weights = [endpoint.get('weight', 1.0) for endpoint in endpoints]
+            total_weight = sum(weights)
+            normalized_weights = [w / total_weight for w in weights]
         
         # Start with a low concurrency and increase
         concurrent_levels = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -321,7 +357,9 @@ class StressTester:
                            request_rate: int,
                            duration: int,
                            headers: Optional[Dict[str, str]] = None,
-                           endpoint_schemas: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
+                           endpoint_schemas: Optional[Dict[str, Any]] = None,
+                           seed: Optional[int] = None,
+                           distribution_pattern: str = "uniform") -> Dict[str, List[Dict[str, Any]]]:
         """Run test with random selection of endpoints for each request"""
         self.active_tests[test_id] = True
         self.results[test_id] = {}
@@ -329,6 +367,10 @@ class StressTester:
         
         # Store start time
         self.test_start_times[test_id] = datetime.now()
+        
+        # Initialize random seed if provided
+        if seed is not None:
+            random.seed(seed)
         
         # Initialize results for each endpoint
         endpoint_info = {}
@@ -346,8 +388,19 @@ class StressTester:
                 'custom_params': endpoint.get('custom_parameters')
             }
         
-        # Calculate weights for weighted random selection
-        weights = [endpoint.get('weight', 1.0) for endpoint in endpoints]
+        # Calculate weights for weighted random selection based on distribution pattern
+        weights = []
+        if distribution_pattern == "weighted":
+            # Use the weights provided in endpoints
+            weights = [endpoint.get('weight', 1.0) for endpoint in endpoints]
+        elif distribution_pattern == "gaussian":
+            # Create a bell curve distribution centered on the middle endpoint
+            mid_point = len(endpoints) / 2
+            weights = [max(0.1, 1.0 - abs(i - mid_point) / mid_point) for i in range(len(endpoints))]
+        else:  # uniform or any other value
+            # Equal weights for all endpoints
+            weights = [1.0 for _ in endpoints]
+            
         endpoint_keys = list(endpoint_info.keys())
         
         # Start with a low concurrency and increase
@@ -582,7 +635,8 @@ class StressTester:
                              duration: int,
                              endpoints: List[Dict[str, Any]],
                              headers: Optional[Dict[str, str]] = None,
-                             endpoint_schemas: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
+                             endpoint_schemas: Optional[Dict[str, Any]] = None,
+                             strategy_options: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Run an advanced stress test with the specified strategy"""
         # Store the test configuration
         self.test_configs[test_id] = {
@@ -592,8 +646,19 @@ class StressTester:
             "request_rate": request_rate,
             "duration": duration,
             "endpoints": endpoints,
-            "headers": headers
+            "headers": headers,
+            "strategy_options": strategy_options
         }
+        
+        # Extract strategy-specific options
+        sequential_options = {}
+        interleaved_options = {}
+        random_options = {}
+        
+        if strategy_options:
+            sequential_options = strategy_options.get("sequential", {})
+            interleaved_options = strategy_options.get("interleaved", {})
+            random_options = strategy_options.get("random", {})
         
         # Choose the appropriate test strategy
         if strategy == DistributionStrategy.SEQUENTIAL:
@@ -605,7 +670,9 @@ class StressTester:
                 request_rate=request_rate,
                 duration=duration,
                 headers=headers,
-                endpoint_schemas=endpoint_schemas
+                endpoint_schemas=endpoint_schemas,
+                delay_ms=sequential_options.get("delay_between_requests_ms", 0),
+                repeat_count=sequential_options.get("repeat_sequence", 1)
             )
         elif strategy == DistributionStrategy.INTERLEAVED:
             return await self.run_interleaved_test(
@@ -616,7 +683,8 @@ class StressTester:
                 request_rate=request_rate,
                 duration=duration,
                 headers=headers,
-                endpoint_schemas=endpoint_schemas
+                endpoint_schemas=endpoint_schemas,
+                endpoint_distribution=interleaved_options.get("endpoint_distribution")
             )
         elif strategy == DistributionStrategy.RANDOM:
             return await self.run_random_test(
@@ -627,7 +695,9 @@ class StressTester:
                 request_rate=request_rate,
                 duration=duration,
                 headers=headers,
-                endpoint_schemas=endpoint_schemas
+                endpoint_schemas=endpoint_schemas,
+                seed=random_options.get("seed"),
+                distribution_pattern=random_options.get("distribution_pattern", "uniform")
             )
         else:
             raise ValueError(f"Unknown strategy: {strategy}")
@@ -802,3 +872,12 @@ class StressTester:
             "status": "running" if self.active_tests.get(test_id, False) else "completed",
             "acquired_sessions": self.acquired_sessions.get(test_id, [])
         }
+
+    # Add new methods for authentication
+    def set_authentication_tokens(self, test_id: str, tokens: List[str]) -> None:
+        """Store authentication tokens for a test"""
+        self.authentication_tokens[test_id] = tokens
+        
+    def set_basic_auth_credentials(self, test_id: str, credentials: List[Dict[str, str]]) -> None:
+        """Store basic authentication credentials for a test"""
+        self.basic_auth_credentials[test_id] = credentials
