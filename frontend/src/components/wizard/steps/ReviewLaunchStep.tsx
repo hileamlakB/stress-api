@@ -395,6 +395,16 @@ export function ReviewLaunchStep() {
       }
     }
 
+    // Always include an authentication object, even if none is used
+    if (!testConfig.authentication) {
+      // Default to a simple 'basic' authentication type with empty accounts to prevent backend errors
+      testConfig.authentication = { 
+        type: "basic", 
+        multiple_accounts: false,
+        accounts: []
+      };
+    }
+
     // Log the configuration to console
     console.log('Test configuration:', JSON.stringify(testConfig, null, 2));
     
@@ -406,6 +416,16 @@ export function ReviewLaunchStep() {
   const sendStressTestRequest = async (config: StressTestConfig) => {
     try {
       setIsLoading(true);
+      
+      // Make sure there's always an authentication object to prevent backend errors
+      if (!config.authentication) {
+        // Default to a simple 'basic' authentication type with empty accounts to prevent backend errors
+        config.authentication = { 
+          type: "basic", 
+          multiple_accounts: false,
+          accounts: []
+        };
+      }
       
       // Prepare the request body
       const requestBody = {
@@ -599,6 +619,16 @@ export function ReviewLaunchStep() {
             console.error(`Unsupported distribution strategy: ${distributionMode}`);
             return;
         }
+      }
+
+      // Always include an authentication object, even if none is used
+      if (!testConfig.authentication) {
+        // Default to a simple 'basic' authentication type with empty accounts to prevent backend errors
+        testConfig.authentication = { 
+          type: "basic", 
+          multiple_accounts: false,
+          accounts: []
+        };
       }
 
       // Prepare request body for the API
