@@ -18,6 +18,10 @@ import re
 # Add parent directory to path so 'backend' is recognized
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# RAILWAY DEPLOYMENT FIX: Add current directory to path as well
+# This ensures we can import 'backend' modules when the backend dir is the root
+sys.path.insert(0, os.getcwd())
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
