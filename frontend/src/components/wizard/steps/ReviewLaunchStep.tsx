@@ -1,4 +1,4 @@
-settingimport { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, AlertCircle, CheckCircle, XCircle, Loader, Clock, RefreshCw } from 'lucide-react';
 import { Button } from '../../Button';
 import { useWizard } from '../WizardContext';

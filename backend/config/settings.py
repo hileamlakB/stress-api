@@ -58,7 +58,8 @@ CORS_ORIGINS = [
     "http://127.0.0.1:5173",  # Vite default (IP)
     "http://127.0.0.1:5174",  # Vite preview (IP)
     "https://stress-api.vercel.app",  # Production Vercel deployment
-    "https://stressapi.com"
+    "https://stressapi.com",
+    "https://www.stressapi.com"  # Added www subdomain
 ]
 
 # Database settings for SQLAlchemy
