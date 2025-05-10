@@ -177,8 +177,8 @@ async def create_order(order: OrderCreate):
     response_model=OrderStatusResponse
 )
 async def get_order_status(
-    order_id: str = Path(..., pattern=r"^ORD-[0-9]{6}$"),
-    user_id: int = Query(..., ge=1, description="ID of the user who placed the order")
+    order_id: str = Path(...),
+    user_id: int = Query(1, ge=1, description="ID of the user who placed the order")
 ):
     """
     Check the status of an existing order.
