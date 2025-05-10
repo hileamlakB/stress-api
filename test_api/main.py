@@ -283,33 +283,18 @@ async def get_order_status(
     )
 
 # Performance Testing Endpoints
-@app.get("/delay/{seconds}", 
-    tags=["performance"], 
-    response_model=DelayResponse
-)
-async def delayed_response(seconds: float = Path(1, ge=0, le=30, description="Seconds to delay the response")):
-    """
-    Endpoint that introduces artificial delay to test timeout scenarios.
-    """
-    # Limit actual delay time to prevent server overload during stress testing
-    actual_seconds = min(seconds, 5.0)
-    time.sleep(actual_seconds)
-    return DelayResponse(
-        message=f"Response delayed by {actual_seconds} seconds",
-        seconds_delayed=actual_seconds
-    )
-
 @app.get("/load/{intensity}", 
     tags=["performance"], 
     response_model=LoadTestResponse
 )
-async def cpu_load(params: LoadTestParams = Depends()):
+async def cpu_load(intensity: int = Path(..., ge=1, le=10, description="Load intensity level"),
+                   duration: float = Query(1.0, ge=0, le=5, description="Test duration in seconds")):
     """
     Endpoint that generates CPU load for testing.
     """
     # Limit actual intensity and duration to prevent server overload during stress testing
-    intensity = min(params.intensity, 5)
-    duration = min(params.duration, 2.0)
+    intensity = min(intensity, 5)
+    duration = min(duration, 2.0)
     
     start_time = time.time()
     cpu_usage_start = psutil.cpu_percent()
