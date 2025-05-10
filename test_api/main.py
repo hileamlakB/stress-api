@@ -94,8 +94,7 @@ async def get_user(
 # Product Management Endpoints
 @app.post("/products/", 
     tags=["products"], 
-    response_model=ProductResponse,
-    dependencies=[Depends(verify_api_key)]
+    response_model=ProductResponse
 )
 async def create_product(product: ProductCreate):
     """

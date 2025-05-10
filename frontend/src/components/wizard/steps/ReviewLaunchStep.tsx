@@ -1320,22 +1320,6 @@ export function ReviewLaunchStep() {
               </Button>
             ) : (
               <>
-                {/* Test results are available - show results button */}
-                {testResults && (
-                  <Button
-                    onClick={() => {
-                      // Navigate to results page
-                      if (currentTestId) {
-                        window.location.href = `/results/${currentTestId}`;
-                      }
-                    }}
-                    className="flex items-center py-2 px-6 bg-blue-600 hover:bg-blue-700"
-                    size="lg"
-                  >
-                    <span className="mr-2">📊</span>
-                    VIEW DETAILED RESULTS
-                  </Button>
-                )}
                 
                 {/* Button to reset the state and start a new test */}
                 <Button
