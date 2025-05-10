@@ -17,3 +17,9 @@ PyJWT
 sqlalchemy
 psycopg2
 requests
+email-validator
+psutil
+pytest
+matplotlib
+seaborn
+pandas
